@@ -1,0 +1,302 @@
+{
+  "case_name": "sparc_demo_discharge",
+  "status": "passed",
+  "global_input": {
+    "case_name": "sparc_demo_discharge",
+    "device": {
+      "name": "SPARC_simplified",
+      "B0_T": 12.2,
+      "R0_m": 1.85,
+      "a_m": 0.57,
+      "note": "TF 固定为背景环向场，不生成动态波形。"
+    },
+    "timeline": {
+      "t_start_s": 0.0,
+      "breakdown_end_s": 0.08,
+      "rampup_end_s": 1.2,
+      "flattop_end_s": 3.2,
+      "dt_s": 0.02
+    },
+    "target": {
+      "Ip_seed_MA": 0.15,
+      "Ip_flat_MA": 8.7,
+      "shape": {
+        "R_axis_m": 1.85,
+        "minor_radius_m": 0.57,
+        "kappa_flat": 1.9,
+        "delta_flat": 0.45,
+        "x_point": "lower_single_null"
+      }
+    },
+    "coils": {
+      "CS1": {
+        "I0_MA": 5.0,
+        "I_min_MA": -8.0,
+        "I_max_MA": 8.0,
+        "dI_dt_max_MA_per_s": 12.0
+      },
+      "CS2": {
+        "I0_MA": 6.0,
+        "I_min_MA": -9.0,
+        "I_max_MA": 9.0,
+        "dI_dt_max_MA_per_s": 14.0
+      },
+      "CS3": {
+        "I0_MA": 5.0,
+        "I_min_MA": -8.0,
+        "I_max_MA": 8.0,
+        "dI_dt_max_MA_per_s": 12.0
+      },
+      "PF1": {
+        "I0_MA": 0.2,
+        "I_min_MA": -5.0,
+        "I_max_MA": 5.0,
+        "dI_dt_max_MA_per_s": 6.0
+      },
+      "PF2": {
+        "I0_MA": 0.3,
+        "I_min_MA": -5.0,
+        "I_max_MA": 5.0,
+        "dI_dt_max_MA_per_s": 6.0
+      },
+      "PF3": {
+        "I0_MA": -0.4,
+        "I_min_MA": -6.0,
+        "I_max_MA": 6.0,
+        "dI_dt_max_MA_per_s": 7.0
+      },
+      "PF4": {
+        "I0_MA": -0.6,
+        "I_min_MA": -7.0,
+        "I_max_MA": 7.0,
+        "dI_dt_max_MA_per_s": 8.0
+      },
+      "Div1": {
+        "I0_MA": 0.0,
+        "I_min_MA": -1.5,
+        "I_max_MA": 1.5,
+        "dI_dt_max_MA_per_s": 2.0
+      },
+      "Div2": {
+        "I0_MA": 0.0,
+        "I_min_MA": -1.5,
+        "I_max_MA": 1.5,
+        "dI_dt_max_MA_per_s": 2.0
+      },
+      "VS": {
+        "I0_MA": 0.0,
+        "I_min_MA": -1.0,
+        "I_max_MA": 1.0,
+        "reserved_fraction": 0.7
+      }
+    },
+    "constraints": {
+      "cs_flux_budget_Vs": 35.0,
+      "breakdown_loop_voltage_V": 20.0,
+      "breakdown_zero_field_tolerance_T": 0.005,
+      "min_cs_flux_margin_fraction": 0.15,
+      "max_pf_asymmetry_fraction": 0.1
+    },
+    "options": {
+      "waveform_style": "smooth_piecewise_linear",
+      "output_format": [
+        "csv",
+        "json",
+        "markdown"
+      ],
+      "make_plots": true,
+      "output_root": "outputs"
+    }
+  },
+  "stage_1_result": {
+    "stage_name": "breakdown",
+    "time_range_s": {
+      "start": 0.0,
+      "end": 0.08
+    },
+    "Ip_at_breakdown_end_MA": 0.15,
+    "coil_state_at_breakdown_end": {
+      "CS1": 5.0,
+      "CS2": 6.0,
+      "CS3": 5.0,
+      "PF1": 0.2,
+      "PF2": 0.3,
+      "PF3": -0.4,
+      "PF4": -0.6,
+      "Div1": 0.0,
+      "Div2": 0.0,
+      "VS": 0.0
+    },
+    "cs_flux_used_breakdown_Vs": 1.6,
+    "cs_flux_remaining_after_breakdown_Vs": 33.4,
+    "waveform_ref": "outputs/sparc_demo_discharge/stage_1_breakdown_waveform.csv",
+    "breakdown_validation": {
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "checks": {
+        "time_axis": true,
+        "current_limits": true,
+        "dI_dt_limits": true,
+        "cs_flux_budget": true,
+        "waveform_continuity": true
+      }
+    }
+  },
+  "stage_2_result": {
+    "stage_name": "rampup",
+    "time_range_s": {
+      "start": 0.08,
+      "end": 1.2
+    },
+    "Ip_at_rampup_start_MA": 0.15,
+    "Ip_at_rampup_end_MA": 8.7,
+    "coil_state_at_rampup_start": {
+      "CS1": 5.0,
+      "CS2": 6.0,
+      "CS3": 5.0,
+      "PF1": 0.2,
+      "PF2": 0.3,
+      "PF3": -0.4,
+      "PF4": -0.6,
+      "Div1": 0.0,
+      "Div2": 0.0,
+      "VS": 0.0
+    },
+    "coil_state_at_rampup_end": {
+      "CS1": 5.0,
+      "CS2": 6.0,
+      "CS3": 5.0,
+      "PF1": 0.2,
+      "PF2": 0.3,
+      "PF3": -0.4,
+      "PF4": -0.6,
+      "Div1": 0.0,
+      "Div2": 0.0,
+      "VS": 0.0
+    },
+    "shape_state_at_rampup_end": {
+      "R_axis_m": 1.85,
+      "minor_radius_m": 0.57,
+      "kappa": 1.9,
+      "delta": 0.45,
+      "x_point": "lower_single_null"
+    },
+    "cs_flux_used_rampup_Vs": 7.6608,
+    "cs_flux_remaining_after_rampup_Vs": 25.7392,
+    "waveform_ref": "outputs/sparc_demo_discharge/stage_2_rampup_waveform.csv",
+    "rampup_validation": {
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "checks": {
+        "time_axis": true,
+        "current_limits": true,
+        "dI_dt_limits": true,
+        "cs_flux_budget": true,
+        "waveform_continuity": true
+      }
+    }
+  },
+  "stage_3_result": {
+    "stage_name": "flattop",
+    "time_range_s": {
+      "start": 1.2,
+      "end": 3.2
+    },
+    "Ip_at_flattop_start_MA": 8.7,
+    "Ip_at_flattop_end_MA": 8.7,
+    "coil_state_at_flattop_start": {
+      "CS1": 5.0,
+      "CS2": 6.0,
+      "CS3": 5.0,
+      "PF1": 0.2,
+      "PF2": 0.3,
+      "PF3": -0.4,
+      "PF4": -0.6,
+      "Div1": 0.0,
+      "Div2": 0.0,
+      "VS": 0.0
+    },
+    "coil_state_at_flattop_end": {
+      "CS1": 5.0,
+      "CS2": 6.0,
+      "CS3": 5.0,
+      "PF1": 0.2,
+      "PF2": 0.3,
+      "PF3": -0.4,
+      "PF4": -0.6,
+      "Div1": 0.0,
+      "Div2": 0.0,
+      "VS": 0.0
+    },
+    "shape_state_at_flattop_end": {
+      "R_axis_m": 1.85,
+      "minor_radius_m": 0.57,
+      "kappa": 1.9,
+      "delta": 0.45,
+      "x_point": "lower_single_null"
+    },
+    "cs_flux_used_flattop_Vs": 3.48,
+    "cs_flux_margin": {
+      "remaining_Vs": 22.2592,
+      "margin_fraction": 0.635977,
+      "passed": true
+    },
+    "divertor_setting": {
+      "Div1_MA": 0.0,
+      "Div2_MA": 0.0,
+      "mode": "fixed_or_small_scan"
+    },
+    "vs_reserved_range": {
+      "VS_bias_MA": 0.0,
+      "reserved_fraction": 0.7,
+      "I_min_MA": -1.0,
+      "I_max_MA": 1.0
+    },
+    "waveform_ref": "outputs/sparc_demo_discharge/stage_3_flattop_waveform.csv",
+    "flattop_validation": {
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "checks": {
+        "time_axis": true,
+        "current_limits": true,
+        "dI_dt_limits": true,
+        "cs_flux_budget": true,
+        "waveform_continuity": true
+      }
+    }
+  },
+  "final_result": {
+    "passed": true,
+    "failed_stage": null,
+    "waveform_file": "C:\\Users\\duanmuqingyu\\Desktop\\Hope02\\sparc_discharge_waveform_skill\\outputs\\sparc_demo_discharge/waveforms.csv",
+    "process_state_file": "C:\\Users\\duanmuqingyu\\Desktop\\Hope02\\sparc_discharge_waveform_skill\\outputs\\sparc_demo_discharge/process_state.json",
+    "stage_summary_file": "C:\\Users\\duanmuqingyu\\Desktop\\Hope02\\sparc_discharge_waveform_skill\\outputs\\sparc_demo_discharge/stage_summary.md",
+    "validation_report_file": "C:\\Users\\duanmuqingyu\\Desktop\\Hope02\\sparc_discharge_waveform_skill\\outputs\\sparc_demo_discharge/validation_report.md",
+    "revision_suggestions_file": "C:\\Users\\duanmuqingyu\\Desktop\\Hope02\\sparc_discharge_waveform_skill\\outputs\\sparc_demo_discharge/revision_suggestions.md",
+    "key_metrics": {
+      "Ip_seed_MA": 0.15,
+      "Ip_flat_MA": 8.7,
+      "cs_flux_budget_Vs": 35.0,
+      "cs_flux_used_total_Vs": 12.7408,
+      "cs_flux_remaining_Vs": 22.2592,
+      "cs_flux_margin_fraction": 0.635977
+    },
+    "major_warnings": [],
+    "next_revision_suggestions": []
+  },
+  "input_validation": {
+    "passed": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "top_level_keys": true,
+      "timeline": true,
+      "target": true,
+      "coils": true,
+      "constraints": true
+    }
+  }
+}

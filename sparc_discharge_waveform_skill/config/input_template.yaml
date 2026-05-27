@@ -1,0 +1,119 @@
+# SPARC 简化放电波形设计统一输入模板
+# 用户主要填写实验目标和时间安排。
+# 线圈初值、上下限和变化率属于装置预设或工程约束，通常使用默认值。
+# pipeline 会根据目标 Ip、位形和约束自动生成 CS/PF/Div/VS 候选波形。
+# 三阶段中间状态由 pipeline/process_state.json 自动生成，不应在此手动填写。
+
+case_name: sparc_demo_discharge
+
+device:
+  name: SPARC_simplified
+  B0_T: 12.2
+  R0_m: 1.85
+  a_m: 0.57
+  note: TF 固定为背景环向场，不生成动态波形。
+
+## 基于实验装置的固定参量
+
+timeline:
+  t_start_s: 0.0
+  breakdown_end_s: 0.08
+  rampup_end_s: 1.20
+  flattop_end_s: 3.20
+  dt_s: 0.02
+
+  ## 实验前根据实验需求在这里修改参数 这里决定 击穿持续多久 多久升到目标电流 平顶维持到什么时候 输出波形采样间隔
+
+target:
+  Ip_seed_MA: 0.15
+  Ip_flat_MA: 8.7
+## 实验前根据实验需求在这里修改参数 这里决定 击穿后种子电流 平顶目标电流 目标位形参数
+## 如 Ip_flat_MA: 8.7  我希望最后等离子体电流达到多少 MA。
+  shape:
+    R_axis_m: 1.85
+    minor_radius_m: 0.57
+    kappa_flat: 1.90
+    delta_flat: 0.45
+    x_point: lower_single_null
+
+## 目标位形 我要一个多大的等离子体、在什么位置、什么拉长比、什么三角形变、什么偏滤器构型
+
+
+coils:
+  CS1:
+    I0_MA: 5.0
+    I_min_MA: -8.0
+    I_max_MA: 8.0
+    dI_dt_max_MA_per_s: 12.0
+  CS2:
+    I0_MA: 6.0
+    I_min_MA: -9.0
+    I_max_MA: 9.0
+    dI_dt_max_MA_per_s: 14.0
+  CS3:
+    I0_MA: 5.0
+    I_min_MA: -8.0
+    I_max_MA: 8.0
+    dI_dt_max_MA_per_s: 12.0
+
+  PF1:
+    I0_MA: 0.2
+    I_min_MA: -5.0
+    I_max_MA: 5.0
+    dI_dt_max_MA_per_s: 6.0
+  PF2:
+    I0_MA: 0.3
+    I_min_MA: -5.0
+    I_max_MA: 5.0
+    dI_dt_max_MA_per_s: 6.0
+  PF3:
+    I0_MA: -0.4
+    I_min_MA: -6.0
+    I_max_MA: 6.0
+    dI_dt_max_MA_per_s: 7.0
+  PF4:
+    I0_MA: -0.6
+    I_min_MA: -7.0
+    I_max_MA: 7.0
+    dI_dt_max_MA_per_s: 8.0
+
+  Div1:
+    I0_MA: 0.0
+    I_min_MA: -1.5
+    I_max_MA: 1.5
+    dI_dt_max_MA_per_s: 2.0
+  Div2:
+    I0_MA: 0.0
+    I_min_MA: -1.5
+    I_max_MA: 1.5
+    dI_dt_max_MA_per_s: 2.0
+
+  VS:
+    I0_MA: 0.0
+    I_min_MA: -1.0
+    I_max_MA: 1.0
+    reserved_fraction: 0.70
+
+## 线圈电流上下限和变化率
+
+  
+
+constraints:
+  cs_flux_budget_Vs: 35.0
+  breakdown_loop_voltage_V: 20.0
+  breakdown_zero_field_tolerance_T: 0.005
+  min_cs_flux_margin_fraction: 0.15
+  max_pf_asymmetry_fraction: 0.10
+
+## 击穿要求 击穿后种子电流 击穿后环向电压 击穿后等离子体电流 击穿后等离子体形状 击穿后等离子体位置 击穿后等离子体拉长比 击穿后等离子体三角形变 击穿后等离子体偏滤器构型
+
+
+
+options:
+  waveform_style: smooth_piecewise_linear
+  output_format:
+    - csv
+    - json
+    - markdown
+  make_plots: true
+  output_root: outputs

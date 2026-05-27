@@ -1,0 +1,301 @@
+{
+  "case_name": "sparc_stage_1_breakdown_demo",
+  "stage": "breakdown",
+  "breakdown_waveform": [
+    {
+      "time_s": 0.0,
+      "stage": "breakdown",
+      "Ip_MA": 0.0,
+      "I_CS1_MA": 5.0,
+      "I_CS2_MA": 6.0,
+      "I_CS3_MA": 5.0,
+      "I_PF1_MA": 0.2,
+      "I_PF2_MA": 0.3,
+      "I_PF3_MA": -0.4,
+      "I_PF4_MA": -0.6,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_start"
+    },
+    {
+      "time_s": 0.01,
+      "stage": "breakdown",
+      "Ip_MA": 0.0064453125,
+      "I_CS1_MA": 4.9896875,
+      "I_CS2_MA": 5.98625,
+      "I_CS3_MA": 4.9896875,
+      "I_PF1_MA": 0.195703125,
+      "I_PF2_MA": 0.29355468749999997,
+      "I_PF3_MA": -0.4150390625,
+      "I_PF4_MA": -0.6171875,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.02,
+      "stage": "breakdown",
+      "Ip_MA": 0.0234375,
+      "I_CS1_MA": 4.9625,
+      "I_CS2_MA": 5.95,
+      "I_CS3_MA": 4.9625,
+      "I_PF1_MA": 0.184375,
+      "I_PF2_MA": 0.2765625,
+      "I_PF3_MA": -0.4546875,
+      "I_PF4_MA": -0.6625,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.03,
+      "stage": "breakdown",
+      "Ip_MA": 0.0474609375,
+      "I_CS1_MA": 4.9240625,
+      "I_CS2_MA": 5.89875,
+      "I_CS3_MA": 4.9240625,
+      "I_PF1_MA": 0.168359375,
+      "I_PF2_MA": 0.25253906249999997,
+      "I_PF3_MA": -0.5107421875,
+      "I_PF4_MA": -0.7265625,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.04,
+      "stage": "breakdown",
+      "Ip_MA": 0.075,
+      "I_CS1_MA": 4.88,
+      "I_CS2_MA": 5.84,
+      "I_CS3_MA": 4.88,
+      "I_PF1_MA": 0.15000000000000002,
+      "I_PF2_MA": 0.22499999999999998,
+      "I_PF3_MA": -0.575,
+      "I_PF4_MA": -0.8,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.05,
+      "stage": "breakdown",
+      "Ip_MA": 0.1025390625,
+      "I_CS1_MA": 4.8359375,
+      "I_CS2_MA": 5.78125,
+      "I_CS3_MA": 4.8359375,
+      "I_PF1_MA": 0.131640625,
+      "I_PF2_MA": 0.1974609375,
+      "I_PF3_MA": -0.6392578125,
+      "I_PF4_MA": -0.8734375,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.06,
+      "stage": "breakdown",
+      "Ip_MA": 0.1265625,
+      "I_CS1_MA": 4.797499999999999,
+      "I_CS2_MA": 5.7299999999999995,
+      "I_CS3_MA": 4.797499999999999,
+      "I_PF1_MA": 0.115625,
+      "I_PF2_MA": 0.1734375,
+      "I_PF3_MA": -0.6953125,
+      "I_PF4_MA": -0.9375,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.07,
+      "stage": "breakdown",
+      "Ip_MA": 0.1435546875,
+      "I_CS1_MA": 4.7703125,
+      "I_CS2_MA": 5.69375,
+      "I_CS3_MA": 4.7703125,
+      "I_PF1_MA": 0.104296875,
+      "I_PF2_MA": 0.1564453125,
+      "I_PF3_MA": -0.7349609375,
+      "I_PF4_MA": -0.9828125000000001,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_swing"
+    },
+    {
+      "time_s": 0.08,
+      "stage": "breakdown",
+      "Ip_MA": 0.15,
+      "I_CS1_MA": 4.76,
+      "I_CS2_MA": 5.68,
+      "I_CS3_MA": 4.76,
+      "I_PF1_MA": 0.1,
+      "I_PF2_MA": 0.15,
+      "I_PF3_MA": -0.75,
+      "I_PF4_MA": -1.0,
+      "I_Div1_MA": 0.0,
+      "I_Div2_MA": 0.0,
+      "I_VS_bias_MA": 0.0,
+      "B0_T": 12.2,
+      "note": "breakdown_end"
+    }
+  ],
+  "Ip_at_breakdown_end_MA": 0.15,
+  "coil_state_at_breakdown_end": {
+    "CS1": 4.76,
+    "CS2": 5.68,
+    "CS3": 4.76,
+    "PF1": 0.1,
+    "PF2": 0.15,
+    "PF3": -0.75,
+    "PF4": -1.0,
+    "Div1": 0.0,
+    "Div2": 0.0,
+    "VS": 0.0
+  },
+  "cs_flux_used_breakdown_Vs": 1.6,
+  "cs_flux_remaining_after_breakdown_Vs": 33.4,
+  "zero_field_error_T": 0.004,
+  "breakdown_validation": {
+    "passed": true,
+    "checks": [
+      {
+        "name": "time_axis",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "CS1_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "CS2_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "CS3_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF1_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF2_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF3_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF4_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "Div1_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "Div2_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "VS_current_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "CS1_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "CS2_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "CS3_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF1_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF2_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF3_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "PF4_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "Div1_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "Div2_rate_limit",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "cs_flux_margin",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "zero_field_quality",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "seed_current",
+        "passed": true,
+        "suggestion": ""
+      },
+      {
+        "name": "waveform_continuity",
+        "passed": true,
+        "suggestion": ""
+      }
+    ],
+    "issues": []
+  }
+}

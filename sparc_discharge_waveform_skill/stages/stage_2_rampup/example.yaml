@@ -1,0 +1,216 @@
+# Ramp-up 阶段输入案例
+# 该文件提供 Stage 2 的最小但结构完整的输入示例。
+
+metadata:
+  case_id: sparc_stage_2_rampup_example
+  stage: rampup
+  description: 从 Breakdown 末端状态爬升到目标平台电流前状态的示例配置
+  author: Hope02
+  created_at: 2026-05-27
+  version: 0.1.0
+
+handoff_from_stage_1:
+  source_stage: breakdown
+  source_case_id: sparc_stage_1_breakdown_example
+  time_s: 0.08
+  plasma_current_MA: 0.15
+  loop_voltage_V: 18.0
+  flux_consumed_Wb: 3.5
+  plasma_state:
+    breakdown_success: true
+    electron_temperature_eV: 80.0
+    line_average_density_1e19_m3: 0.15
+    major_radius_m: 1.85
+    minor_radius_m: 0.35
+    elongation: 1.15
+    triangularity: 0.05
+  coil_currents_kA:
+    CS1: 18.0
+    CS2: 16.5
+    CS3: 15.0
+    PF1: 4.0
+    PF2: 3.5
+    PF3: 2.0
+    PF4: -1.0
+  notes:
+    - Stage 2 以 Stage 1 结束时刻作为起点。
+    - 若实际 Stage 1 输出字段不同，应在适配层完成映射。
+
+targets:
+  end_time_s: 3.0
+  target_plasma_current_MA: 8.7
+  target_loop_voltage_V: 1.2
+  target_q95: 3.2
+  max_flux_consumption_Wb: 45.0
+  target_shape:
+    major_radius_m: 1.85
+    minor_radius_m: 0.57
+    elongation: 1.75
+    triangularity: 0.35
+    vertical_position_m: 0.0
+
+waveform_strategy:
+  time_grid:
+    start_time_s: 0.08
+    end_time_s: 3.0
+    step_s: 0.02
+  current_ramp:
+    mode: piecewise_linear
+    max_ramp_rate_MA_per_s: 4.0
+    breakpoints:
+      - time_s: 0.08
+        plasma_current_MA: 0.15
+      - time_s: 0.50
+        plasma_current_MA: 1.2
+      - time_s: 1.50
+        plasma_current_MA: 5.0
+      - time_s: 3.00
+        plasma_current_MA: 8.7
+  loop_voltage_profile:
+    mode: bounded_smooth_decay
+    initial_voltage_V: 18.0
+    final_voltage_V: 1.2
+    max_voltage_V: 22.0
+    min_voltage_V: 0.5
+  shape_evolution:
+    mode: linear_to_target
+    preserve_axis_radius: true
+    parameters:
+      elongation:
+        start: 1.15
+        end: 1.75
+      triangularity:
+        start: 0.05
+        end: 0.35
+      minor_radius_m:
+        start: 0.35
+        end: 0.57
+  density_ramp:
+    mode: proportional_to_current
+    start_line_average_density_1e19_m3: 0.15
+    end_line_average_density_1e19_m3: 4.0
+    max_rate_1e19_m3_per_s: 2.0
+
+engineering_limits:
+  flux:
+    total_available_Wb: 120.0
+    already_consumed_Wb: 3.5
+    max_stage_2_consumption_Wb: 45.0
+  loop_voltage:
+    min_V: 0.0
+    max_V: 22.0
+  plasma_current:
+    min_MA: 0.0
+    max_MA: 9.0
+    max_ramp_rate_MA_per_s: 4.0
+  coil_currents:
+    CS1:
+      min_kA: -40.0
+      max_kA: 40.0
+      max_slew_rate_kA_per_s: 25.0
+    CS2:
+      min_kA: -40.0
+      max_kA: 40.0
+      max_slew_rate_kA_per_s: 25.0
+    CS3:
+      min_kA: -40.0
+      max_kA: 40.0
+      max_slew_rate_kA_per_s: 25.0
+    PF1:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 15.0
+    PF2:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 15.0
+    PF3:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 15.0
+    PF4:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 15.0
+    Div1:
+      min_kA: -5.0
+      max_kA: 5.0
+      max_slew_rate_kA_per_s: 5.0
+    Div2:
+      min_kA: -5.0
+      max_kA: 5.0
+      max_slew_rate_kA_per_s: 5.0
+  power_supplies:
+    max_voltage_V:
+      CS: 1200.0
+      PF: 800.0
+    max_power_MW:
+      total: 250.0
+
+physics_constraints:
+  q95:
+    min: 2.8
+    target: 3.2
+  internal_inductance:
+    min: 0.55
+    max: 1.20
+  normalized_beta:
+    max: 1.8
+  vertical_stability:
+    min_margin: 0.15
+  plasma_shape:
+    elongation:
+      min: 1.10
+      max: 1.85
+    triangularity:
+      min: 0.00
+      max: 0.45
+    minor_radius_m:
+      min: 0.30
+      max: 0.60
+
+control_constraints:
+  controller_update_period_s: 0.005
+  waveform_sample_period_s: 0.02
+  tracking_tolerances:
+    plasma_current_MA: 0.05
+    loop_voltage_V: 0.5
+    coil_current_kA: 0.25
+    shape_dimension_m: 0.01
+  fallback_behavior:
+    on_constraint_warning: continue_with_warning
+    on_constraint_violation: stop_and_report
+
+outputs:
+  requested:
+    - summary
+    - waveforms
+    - constraint_report
+    - handoff_to_stage_3
+  waveform_channels:
+    - time_s
+    - plasma_current_MA
+    - loop_voltage_V
+    - flux_consumed_Wb
+    - q95
+    - elongation
+    - triangularity
+    - line_average_density_1e19_m3
+    - coil_currents_kA
+  handoff_to_stage_3_fields:
+    - time_s
+    - plasma_current_MA
+    - loop_voltage_V
+    - flux_consumed_Wb
+    - flux_remaining_Wb
+    - q95
+    - target_shape
+    - coil_currents_kA
+    - constraint_status
+
+validation:
+  require_stage_1_handoff: true
+  require_monotonic_time: true
+  require_monotonic_current_ramp: true
+  allow_warnings: true
+  fail_on_limit_violation: true

@@ -1,0 +1,126 @@
+# Stage 1 Breakdown 输入案例
+# 目的：提供第一阶段最小可执行配置，用于 generate.py 生成击穿阶段候选波形。
+# 单位约定：时间 s，电流 MA，磁场 T，伏秒 Vs。
+
+case_name: sparc_stage_1_breakdown_demo
+
+# 固定装置背景。TF 不作为动态波形设计对象，只用 B0_T 表示背景环向场。
+device:
+  name: SPARC_simplified
+  B0_T: 12.2
+  R0_m: 1.85
+  a_m: 0.57
+
+# 本阶段只使用 t_start_s 到 breakdown_end_s。
+# rampup_end_s 和 flattop_end_s 保留在此处，是为了让本配置可继续扩展到三阶段总流程。
+timeline:
+  t_start_s: 0.0
+  breakdown_end_s: 0.08
+  rampup_end_s: 1.20
+  flattop_end_s: 3.20
+  dt_s: 0.01
+
+# Breakdown 的直接目标是建立种子电流，而不是形成最终平顶位形。
+target:
+  Ip_seed_MA: 0.15
+  Ip_flat_MA: 8.7
+  shape:
+    R_axis_m: 1.85
+    minor_radius_m: 0.57
+    kappa_flat: 1.9
+    delta_flat: 0.45
+    x_point: lower_single_null
+
+# 线圈采用上下对称后的等效组。
+# CS1/CS2/CS3 是击穿电压主力。
+# PF3/PF4 是击穿零场预置主力。
+# PF1/PF2 只做小幅修正。
+# Div 和 VS 在 Breakdown 中不参与主设计。
+coils:
+  CS1:
+    I0_MA: 5.0
+    I_min_MA: -8.0
+    I_max_MA: 8.0
+    dI_dt_max_MA_per_s: 12.0
+  CS2:
+    I0_MA: 6.0
+    I_min_MA: -9.0
+    I_max_MA: 9.0
+    dI_dt_max_MA_per_s: 14.0
+  CS3:
+    I0_MA: 5.0
+    I_min_MA: -8.0
+    I_max_MA: 8.0
+    dI_dt_max_MA_per_s: 12.0
+
+  PF1:
+    I0_MA: 0.2
+    I_min_MA: -5.0
+    I_max_MA: 5.0
+    dI_dt_max_MA_per_s: 6.0
+  PF2:
+    I0_MA: 0.3
+    I_min_MA: -5.0
+    I_max_MA: 5.0
+    dI_dt_max_MA_per_s: 6.0
+  PF3:
+    I0_MA: -0.4
+    I_min_MA: -6.0
+    I_max_MA: 6.0
+    dI_dt_max_MA_per_s: 7.0
+  PF4:
+    I0_MA: -0.6
+    I_min_MA: -7.0
+    I_max_MA: 7.0
+    dI_dt_max_MA_per_s: 8.0
+
+  Div1:
+    I0_MA: 0.0
+    I_min_MA: -1.5
+    I_max_MA: 1.5
+    dI_dt_max_MA_per_s: 2.0
+  Div2:
+    I0_MA: 0.0
+    I_min_MA: -1.5
+    I_max_MA: 1.5
+    dI_dt_max_MA_per_s: 2.0
+
+  VS:
+    I0_MA: 0.0
+    I_min_MA: -1.0
+    I_max_MA: 1.0
+    reserved_fraction: 0.7
+
+# 本阶段验证需要用到的全局与击穿约束。
+constraints:
+  cs_flux_budget_Vs: 35.0
+  breakdown_loop_voltage_V: 20.0
+  breakdown_zero_field_tolerance_T: 0.02
+  min_cs_flux_margin_fraction: 0.15
+  max_pf_asymmetry_fraction: 0.10
+
+# 简化建模选项。
+# cs_swing_share 指定击穿电压需求在三组 CS 中的分担比例。
+# pf_null_preset_target_MA 指定 Breakdown 末端 PF 预置目标电流，用于生成简化零场预置。
+options:
+  waveform_style: smooth_piecewise_linear
+  output_format:
+    - csv
+    - json
+    - markdown
+  make_plots: true
+
+  cs_swing_share:
+    CS1: 0.30
+    CS2: 0.40
+    CS3: 0.30
+
+  # 这里的数值是教学用的简化工作点，不代表真实 SPARC 工程值。
+  pf_null_preset_target_MA:
+    PF1: 0.10
+    PF2: 0.15
+    PF3: -0.75
+    PF4: -1.00
+
+  div_breakdown_mode: hold_initial
+  vs_breakdown_mode: bias_only

@@ -1,0 +1,299 @@
+# Flat-top 阶段输入案例
+# 该文件提供 Stage 3 的最小但结构完整的输入示例。
+# Stage 3 从 Stage 2 的 handoff_to_stage_3 继续，不重置线圈和磁通状态。
+
+metadata:
+  case_id: sparc_stage_3_flattop_example
+  stage: flattop
+  description: 从 Ramp-up 末端状态进入平台维持阶段的示例配置
+  author: Hope02
+  created_at: 2026-05-27
+  version: 0.1.0
+
+handoff_from_stage_2:
+  source_stage: rampup
+  source_case_id: sparc_stage_2_rampup_example
+  time_s: 3.0
+  plasma_current_MA: 8.7
+  loop_voltage_V: 1.2
+  flux_consumed_Wb: 45.5
+  flux_remaining_Wb: 74.5
+  q95: 3.2
+  target_shape:
+    major_radius_m: 1.85
+    minor_radius_m: 0.57
+    elongation: 1.75
+    triangularity: 0.35
+    vertical_position_m: 0.0
+    x_point:
+      enabled: true
+      lower_x_point:
+        R_m: 1.55
+        Z_m: -1.05
+  coil_currents_kA:
+    CS1: 8.0
+    CS2: 6.5
+    CS3: 5.0
+    PF1: 10.5
+    PF2: 12.0
+    PF3: 8.5
+    PF4: -7.0
+    Div1: 1.0
+    Div2: -1.0
+    VS: 0.0
+  constraint_status:
+    stage_2_status: valid
+    warnings:
+      - 平顶入口状态为示例估算值，实际工程应由 Stage 2 输出自动传递。
+  notes:
+    - Stage 3 以 Stage 2 结束时刻作为起点。
+    - 若实际 Stage 2 输出字段不同，应在适配层完成映射。
+
+targets:
+  end_time_s: 8.0
+  target_plasma_current_MA: 8.7
+  allowed_current_deviation_MA: 0.05
+  target_loop_voltage_V: 0.8
+  target_q95: 3.2
+  max_flux_consumption_Wb: 15.0
+  min_flux_margin_fraction: 0.35
+  target_shape:
+    major_radius_m: 1.85
+    minor_radius_m: 0.57
+    elongation: 1.75
+    triangularity: 0.35
+    vertical_position_m: 0.0
+    x_point:
+      enabled: true
+      lower_x_point:
+        R_m: 1.55
+        Z_m: -1.05
+      tolerance_m: 0.03
+  divertor_targets:
+    mode: fixed_or_small_sweep
+    strike_point_lower_outer:
+      R_m: 1.72
+      Z_m: -1.18
+      tolerance_m: 0.04
+    strike_point_lower_inner:
+      R_m: 1.22
+      Z_m: -1.10
+      tolerance_m: 0.04
+    allow_sweep: true
+    sweep_amplitude_m: 0.02
+    sweep_period_s: 1.0
+
+waveform_strategy:
+  time_grid:
+    start_time_s: 3.0
+    end_time_s: 8.0
+    step_s: 0.02
+  plasma_current_hold:
+    mode: constant_with_small_tolerance
+    target_MA: 8.7
+    max_deviation_MA: 0.05
+    smoothing_time_s: 0.20
+  loop_voltage_profile:
+    mode: low_voltage_hold
+    initial_voltage_V: 1.2
+    target_voltage_V: 0.8
+    min_voltage_V: 0.2
+    max_voltage_V: 2.0
+  cs_maintenance:
+    mode: slow_flux_consumption
+    distribute_to_coils:
+      CS1: 0.30
+      CS2: 0.40
+      CS3: 0.30
+    max_stage_consumption_Wb: 15.0
+    prefer_minimum_swing: true
+  pf_shape_hold:
+    mode: hold_with_small_corrections
+    preserve_axis_radius: true
+    correction_gain:
+      PF1: 0.20
+      PF2: 0.25
+      PF3: 0.25
+      PF4: 0.30
+    allowed_relative_adjustment: 0.05
+    allow_upper_lower_asymmetry: true
+    max_pf_asymmetry_fraction: 0.08
+  divertor_control:
+    mode: small_sinusoidal_sweep
+    base_currents_kA:
+      Div1: 1.2
+      Div2: -1.2
+    sweep_currents_kA:
+      Div1_amplitude: 0.25
+      Div2_amplitude: 0.25
+      period_s: 1.0
+      phase_difference_deg: 180.0
+  vs_reserve:
+    mode: reserve_range_only
+    baseline_current_kA: 0.0
+    reserve_fraction_of_limit: 0.70
+    do_not_generate_fast_feedback: true
+
+engineering_limits:
+  flux:
+    total_available_Wb: 120.0
+    already_consumed_Wb: 45.5
+    remaining_at_stage_start_Wb: 74.5
+    max_stage_3_consumption_Wb: 15.0
+    min_remaining_fraction_at_end: 0.35
+  loop_voltage:
+    min_V: 0.0
+    max_V: 2.5
+  plasma_current:
+    min_MA: 8.5
+    max_MA: 8.9
+    max_deviation_from_target_MA: 0.05
+  coil_currents:
+    CS1:
+      min_kA: -40.0
+      max_kA: 40.0
+      max_slew_rate_kA_per_s: 8.0
+    CS2:
+      min_kA: -40.0
+      max_kA: 40.0
+      max_slew_rate_kA_per_s: 8.0
+    CS3:
+      min_kA: -40.0
+      max_kA: 40.0
+      max_slew_rate_kA_per_s: 8.0
+    PF1:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 5.0
+    PF2:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 5.0
+    PF3:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 5.0
+    PF4:
+      min_kA: -25.0
+      max_kA: 25.0
+      max_slew_rate_kA_per_s: 5.0
+    Div1:
+      min_kA: -5.0
+      max_kA: 5.0
+      max_slew_rate_kA_per_s: 3.0
+    Div2:
+      min_kA: -5.0
+      max_kA: 5.0
+      max_slew_rate_kA_per_s: 3.0
+    VS:
+      min_kA: -10.0
+      max_kA: 10.0
+      max_slew_rate_kA_per_s: 20.0
+  power_supplies:
+    max_voltage_V:
+      CS: 600.0
+      PF: 500.0
+      Div: 250.0
+      VS: 800.0
+    max_power_MW:
+      total: 180.0
+
+physics_constraints:
+  q95:
+    min: 2.8
+    target: 3.2
+  internal_inductance:
+    min: 0.55
+    max: 1.20
+  normalized_beta:
+    max: 1.8
+  density:
+    line_average_density_1e20_m3:
+      target: 4.0
+      min: 3.5
+      max: 4.5
+  vertical_stability:
+    min_margin: 0.18
+    require_vs_reserve: true
+  plasma_shape:
+    major_radius_m:
+      target: 1.85
+      tolerance: 0.02
+    minor_radius_m:
+      target: 0.57
+      min: 0.55
+      max: 0.60
+    elongation:
+      target: 1.75
+      min: 1.65
+      max: 1.85
+    triangularity:
+      target: 0.35
+      min: 0.25
+      max: 0.45
+    vertical_position_m:
+      target: 0.0
+      tolerance: 0.02
+  divertor:
+    require_x_point: true
+    max_strike_point_error_m: 0.04
+    max_sweep_amplitude_m: 0.03
+
+control_constraints:
+  controller_update_period_s: 0.005
+  waveform_sample_period_s: 0.02
+  tracking_tolerances:
+    plasma_current_MA: 0.05
+    loop_voltage_V: 0.3
+    coil_current_kA: 0.20
+    shape_dimension_m: 0.01
+    x_point_position_m: 0.03
+    strike_point_position_m: 0.04
+  fallback_behavior:
+    on_constraint_warning: continue_with_warning
+    on_constraint_violation: stop_and_report
+
+outputs:
+  requested:
+    - summary
+    - waveforms
+    - constraint_report
+    - final_state
+    - revision_suggestions
+  waveform_channels:
+    - time_s
+    - plasma_current_MA
+    - loop_voltage_V
+    - flux_consumed_Wb
+    - flux_remaining_Wb
+    - q95
+    - elongation
+    - triangularity
+    - x_point
+    - strike_points
+    - coil_currents_kA
+    - vs_reserved_range_kA
+  final_state_fields:
+    - time_s
+    - plasma_current_MA
+    - loop_voltage_V
+    - flux_consumed_Wb
+    - flux_remaining_Wb
+    - flux_margin_fraction
+    - q95
+    - shape
+    - divertor_setting
+    - vs_reserved_range_kA
+    - coil_currents_kA
+    - constraint_status
+
+validation:
+  require_stage_2_handoff: true
+  require_monotonic_time: true
+  require_current_hold_within_tolerance: true
+  require_flux_margin: true
+  require_shape_hold: true
+  require_divertor_target: true
+  require_vs_reserve: true
+  allow_warnings: true
+  fail_on_limit_violation: true
