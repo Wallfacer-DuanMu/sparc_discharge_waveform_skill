@@ -26,10 +26,17 @@
 - `Div1_slew_rate`: PASS
 - `Div2_slew_rate`: PASS
 - `loop_voltage_limit`: PASS
+- `physics_diagnostics_available`: PASS
+- `cs_mutual_tracking`: PASS
+- `plasma_inductance_positive`: PASS
+- `plasma_resistance_non_negative`: PASS
 - `cs_flux_budget`: PASS
+- `cs_flux_remaining_margin`: PASS
 - `q95_minimum`: PASS
 - `internal_inductance_range`: PASS
 - `vertical_stability_margin`: PASS
 - `shape_limits`: PASS
+- `pf_balance_residual`: PASS
 - `handoff_to_stage_3_complete`: PASS
+- `handoff_physics_fields_complete`: PASS
 - `waveform_continuity`: PASS

@@ -58,6 +58,7 @@ def validate_breakdown_result(
     rows: list[dict[str, Any]],
     cs_flux_used_breakdown_vs: float,
     zero_field_error_t: float,
+    physics_diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """返回 Breakdown 结果验证报告。"""
 
@@ -69,6 +70,8 @@ def validate_breakdown_result(
     checks.append(_check_zero_field(config, zero_field_error_t))
     checks.append(_check_seed_current(config, rows))
     checks.append(_check_continuity(rows))
+    if physics_diagnostics:
+        checks.extend(_check_physics_consistency(config, physics_diagnostics))
 
     issues = [check for check in checks if not check["passed"]]
     return {
@@ -175,6 +178,43 @@ def _check_continuity(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not passed:
             break
     return _check("waveform_continuity", passed, "使用更平滑的过渡函数或增加时间分辨率。")
+
+
+def _check_physics_consistency(config: dict[str, Any], diagnostics: dict[str, Any]) -> list[dict[str, Any]]:
+    target_loop_voltage = float(config["constraints"]["breakdown_loop_voltage_V"])
+    tolerance_fraction = float(config.get("physics", {}).get("loop_voltage_tolerance_fraction", 0.25))
+    tolerance_v = max(1.0, abs(target_loop_voltage) * tolerance_fraction)
+
+    average_cs_voltage = float(diagnostics.get("average_cs_drive_voltage_V", 0.0))
+    average_plasma_voltage = float(diagnostics.get("average_plasma_circuit_voltage_V", 0.0))
+    field = diagnostics.get("breakdown_field", {})
+    br_t = abs(float(field.get("Br_T", 0.0)))
+    bz_t = abs(float(field.get("Bz_T", 0.0)))
+    zero_tolerance = float(config["constraints"]["breakdown_zero_field_tolerance_T"])
+
+    checks = [
+        _check(
+            "cs_loop_voltage_tracking",
+            abs(average_cs_voltage - target_loop_voltage) <= tolerance_v,
+            "检查 CS 互感常数、目标 loop voltage 或 CS swing 分担比例。",
+        ),
+        _check(
+            "plasma_circuit_voltage_reasonable",
+            average_plasma_voltage <= target_loop_voltage + tolerance_v,
+            "降低 Ip_seed、延长 Breakdown 时间，或调整等效 Rp/Lp 参数。",
+        ),
+        _check(
+            "breakdown_Br_component",
+            br_t <= zero_tolerance,
+            "调整 PF 场影响系数或 PF3/PF4 零场预置目标。",
+        ),
+        _check(
+            "breakdown_Bz_component",
+            bz_t <= zero_tolerance,
+            "调整 PF 场影响系数或 PF3/PF4 零场预置目标。",
+        ),
+    ]
+    return checks
 
 
 def _field_name(coil_name: str) -> str:

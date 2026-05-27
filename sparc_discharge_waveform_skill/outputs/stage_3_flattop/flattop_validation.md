@@ -6,7 +6,11 @@
 
 - `time_axis`: PASS
 - `ip_hold`: PASS
-- `loop_voltage_hold`: PASS
+- `loop_voltage_limit`: PASS
+- `loop_voltage_physics_available`: PASS
+- `cs_mutual_tracking`: PASS
+- `plasma_inductance_range`: PASS
+- `plasma_resistance_range`: PASS
 - `cs_flux_margin`: PASS
 - `CS1_current_limit`: PASS
 - `CS2_current_limit`: PASS

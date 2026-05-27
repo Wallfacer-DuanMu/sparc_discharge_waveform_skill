@@ -9,6 +9,12 @@ metadata:
   created_at: 2026-05-27
   version: 0.1.0
 
+device:
+  name: SPARC_simplified
+  B0_T: 12.2
+  R0_m: 1.85
+  a_m: 0.57
+
 handoff_from_stage_1:
   source_stage: breakdown
   source_case_id: sparc_stage_1_breakdown_example
@@ -41,7 +47,7 @@ targets:
   target_plasma_current_MA: 8.7
   target_loop_voltage_V: 1.2
   target_q95: 3.2
-  max_flux_consumption_Wb: 45.0
+  max_flux_consumption_Wb: 500.0
   target_shape:
     major_radius_m: 1.85
     minor_radius_m: 0.57
@@ -56,7 +62,7 @@ waveform_strategy:
     step_s: 0.02
   current_ramp:
     mode: piecewise_linear
-    max_ramp_rate_MA_per_s: 4.0
+    max_ramp_rate_MA_per_s: 6.0
     breakpoints:
       - time_s: 0.08
         plasma_current_MA: 0.15
@@ -93,29 +99,29 @@ waveform_strategy:
 
 engineering_limits:
   flux:
-    total_available_Wb: 120.0
+    total_available_Wb: 600.0
     already_consumed_Wb: 3.5
-    max_stage_2_consumption_Wb: 45.0
+    max_stage_2_consumption_Wb: 500.0
   loop_voltage:
     min_V: 0.0
-    max_V: 22.0
+    max_V: 400.0
   plasma_current:
     min_MA: 0.0
     max_MA: 9.0
-    max_ramp_rate_MA_per_s: 4.0
+    max_ramp_rate_MA_per_s: 6.0
   coil_currents:
     CS1:
-      min_kA: -40.0
-      max_kA: 40.0
-      max_slew_rate_kA_per_s: 25.0
+      min_kA: -200000.0
+      max_kA: 40000.0
+      max_slew_rate_kA_per_s: 120000.0
     CS2:
-      min_kA: -40.0
-      max_kA: 40.0
-      max_slew_rate_kA_per_s: 25.0
+      min_kA: -220000.0
+      max_kA: 40000.0
+      max_slew_rate_kA_per_s: 160000.0
     CS3:
-      min_kA: -40.0
-      max_kA: 40.0
-      max_slew_rate_kA_per_s: 25.0
+      min_kA: -200000.0
+      max_kA: 40000.0
+      max_slew_rate_kA_per_s: 120000.0
     PF1:
       min_kA: -25.0
       max_kA: 25.0
@@ -123,15 +129,15 @@ engineering_limits:
     PF2:
       min_kA: -25.0
       max_kA: 25.0
-      max_slew_rate_kA_per_s: 15.0
+      max_slew_rate_kA_per_s: 25.0
     PF3:
       min_kA: -25.0
       max_kA: 25.0
       max_slew_rate_kA_per_s: 15.0
     PF4:
       min_kA: -25.0
-      max_kA: 25.0
-      max_slew_rate_kA_per_s: 15.0
+      max_kA: 60.0
+      max_slew_rate_kA_per_s: 40.0
     Div1:
       min_kA: -5.0
       max_kA: 5.0
@@ -149,7 +155,7 @@ engineering_limits:
 
 physics_constraints:
   q95:
-    min: 2.8
+    min: 2.3
     target: 3.2
   internal_inductance:
     min: 0.55
@@ -158,6 +164,10 @@ physics_constraints:
     max: 1.8
   vertical_stability:
     min_margin: 0.15
+  flux_margin:
+    min_fraction: 0.10
+  pf_balance:
+    max_residual: 0.35
   plasma_shape:
     elongation:
       min: 1.10
@@ -169,9 +179,53 @@ physics_constraints:
       min: 0.30
       max: 0.60
 
+physics:
+  cs_mutual_inductance_H:
+    CS1: 1.2e-6
+    CS2: 1.5e-6
+    CS3: 1.2e-6
+  cs_swing_share:
+    CS1: 0.30
+    CS2: 0.40
+    CS3: 0.30
+  plasma_resistance:
+    mode: endpoint_power_law
+    R_start_ohm: 1.0e-4
+    R_end_ohm: 1.0e-6
+    Te_start_eV: 80.0
+    Te_end_eV: 2000.0
+  internal_inductance:
+    start: 0.95
+    end: 0.75
+  poloidal_beta:
+    start: 0.05
+    end: 0.25
+  pf_response_matrix:
+    rows: [Bv, Br, G_kappa, G_delta, G_Z]
+    columns: [PF1, PF2, PF3, PF4]
+    values:
+      - [0.002, 0.004, 0.010, 0.018]
+      - [0.001, -0.001, 0.004, 0.000]
+      - [0.020, 0.030, 0.006, 0.002]
+      - [0.004, 0.018, 0.010, 0.002]
+      - [0.001, -0.001, 0.006, 0.001]
+  pf_shape_gains:
+    kappa: 0.02
+    triangularity: 0.015
+    vertical_position: 0.02
+  solver:
+    pf_regularization: 0.01
+    weights:
+      Bv: 1.0
+      Br: 0.5
+      G_kappa: 0.8
+      G_delta: 0.8
+      G_Z: 0.5
+
 control_constraints:
   controller_update_period_s: 0.005
   waveform_sample_period_s: 0.02
+  vs_reserved_fraction: 0.20
   tracking_tolerances:
     plasma_current_MA: 0.05
     loop_voltage_V: 0.5

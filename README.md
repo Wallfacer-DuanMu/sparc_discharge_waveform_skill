@@ -1,6 +1,6 @@
 # SPARC 简化放电线圈电流波形设计 Skill
 
-本项目是一个面向托卡马克放电实验前准备的离线波形设计 Skill。它以 **SPARC 风格的简化托卡马克装置** 为参考对象，把一次标准放电拆成三个阶段：
+本项目是一个面向托卡马克放电实验前准备的离线波形设计 Skill。它以 **SPARC 风格的简化托卡马克装置** 为参考对象，把一次标准放电拆成三个连续阶段：
 
 ```text
 Breakdown 击穿
@@ -8,69 +8,95 @@ Breakdown 击穿
   → Flat-top 平顶维持
 ```
 
-项目目标不是给出真实 SPARC 可直接工程执行的最终波形，而是完成一个学生作业级别的、结构清晰的波形设计流程：从用户给定的放电目标出发，推导 CS/PF/Div/VS 等线圈组的候选电流波形，并输出约束检查、风险提示和下一轮修正建议。
+项目目标不是给出真实 SPARC 可直接工程执行的最终波形，而是给出一套**结构清晰、阶段连续、可检查可迭代**的候选波形设计流程：从用户给定的放电目标出发，推导 CS / PF / Div / VS 等线圈组的候选电流波形，并输出约束检查、风险提示和下一轮修正建议。
+
+---
+
+## 0. 三个阶段物理过程详细说明
+
+本仓库已补充三份“物理过程（简化版）接入”说明，建议与主 README 配合阅读：
+
+- [第一阶段物理过程](./sparc_discharge_waveform_skill/stages/stage_1_breakdown/第一阶段物理过程.md)
+- [第二阶段物理过程](./sparc_discharge_waveform_skill/stages/stage_2_rampup/第二阶段物理过程.md)
+- [第三阶段物理过程](./sparc_discharge_waveform_skill/stages/stage_3_flattop/第三阶段物理过程.md)
+
+这三份文档分别说明了三个阶段目前采用的**最小真实物理约束口径**：
+
+- **Stage 1 / Breakdown**：用等离子体电路方程、CS 互感关系和 PF 击穿零场条件描述种子等离子体建立；
+- **Stage 2 / Ramp-up**：用 \(I_p(t)\)、\(L_p(t)\)、\(R_p(t)\)、CS 伏秒预算与 PF 响应矩阵描述升流与成形；
+- **Stage 3 / Flat-top**：用平台维持环电压、剩余伏秒、PF 位形保持、Div 打击点与 VS 裕度描述平顶维持。
+
+项目现在从早期的结构验证阶段“经验型阶段插值说明”，升级为：**在简化 SPARC 边界下，按三阶段最小物理链路组织输入、状态传递、波形生成与验证**。
 
 ---
 
 ## 1. 项目文件结构
 
 ```text
-sparc_discharge_waveform_skill/
-├─ SKILL.md                      # Skill 总入口：Agent 使用规则、阅读顺序、执行边界。
-│
-├─ docs/
-│  ├─ 01_project_summary.md      # 项目摘要：任务目标、Skill 定位、总体方法。
-│  ├─ 02_facility_and_constraints.md
-│  │                              # 简化 SPARC 装置结构、线圈职责、硬约束。
-│  ├─ 03_workflows.md            # Breakdown / Ramp-up / Flat-top 三阶段工作流。
-│  └─ 04_io_and_examples.md      # 输入输出规范与示例。
-│
-├─ config/
-│  └─ input_template.yaml        # 统一输入模板：用户填写目标放电需求和全局约束。
-│
-├─ pipeline/
-│  ├─ README.md                  # Pipeline 总控说明。
-│  ├─ run_pipeline.py            # 三阶段总入口：串联 Breakdown → Ramp-up → Flat-top。
-│  └─ state_schema.md            # 过程状态、阶段交接、最终状态字段约定。
-│
-├─ common/
-│  ├─ io.py                      # 公共输入输出工具。
-│  ├─ state.py                   # 公共状态结构。
-│  ├─ validation.py              # 公共验证辅助。
-│  ├─ utils.py                   # 公共工具预留。
-│  └─ constraints.py             # 公共约束检查预留。
-│
-├─ stages/
-│  ├─ stage_1_breakdown/
-│  │  ├─ README.md               # 击穿阶段说明。
-│  │  ├─ example.yaml            # 击穿阶段示例输入。
-│  │  ├─ generate.py             # 击穿阶段生成入口。
-│  │  ├─ models.py               # 击穿简化模型。
-│  │  └─ validation.py           # 击穿阶段验证。
-│  │
-│  ├─ stage_2_rampup/
-│  │  ├─ README.md               # 电流爬升阶段说明。
-│  │  ├─ example.yaml            # 爬升阶段示例输入。
-│  │  ├─ generate.py             # 爬升阶段生成入口。
-│  │  ├─ models.py               # 爬升简化模型。
-│  │  └─ validation.py           # 爬升阶段验证。
-│  │
-│  └─ stage_3_flattop/
-│     ├─ README.md               # 平顶阶段说明。
-│     ├─ example.yaml            # 平顶阶段示例输入。
-│     ├─ generate.py             # 平顶阶段生成入口。
-│     ├─ models.py               # 平顶简化模型。
-│     └─ validation.py           # 平顶阶段验证。
-│
-└─ outputs/
-   ├─ README.md                  # 输出目录说明。
-   ├─ sparc_demo_discharge/      # Pipeline 示例输出。
-   ├─ stage_1_breakdown/         # Stage 1 单独运行输出。
-   ├─ stage_2_rampup/            # Stage 2 单独运行输出。
-   └─ stage_3_flattop/           # Stage 3 单独运行输出。
+Hope02/
+├─ README.md
+└─ sparc_discharge_waveform_skill/
+   ├─ SKILL.md                      # Skill 总入口：Agent 使用规则、阅读顺序、执行边界。
+   ├─ 文件目录.md                   # Skill 子目录结构说明。
+   │
+   ├─ docs/
+   │  ├─ 01_project_summary.md      # 项目摘要：任务目标、Skill 定位、总体方法。
+   │  ├─ 02_facility_and_constraints.md
+   │  │                              # 简化 SPARC 装置结构、线圈职责、硬约束。
+   │  ├─ 03_workflows.md            # Breakdown / Ramp-up / Flat-top 三阶段工作流。
+   │  └─ 04_io_and_examples.md      # 输入输出规范与示例。
+   │
+   ├─ config/
+   │  └─ input_template.yaml        # 统一输入模板：用户填写目标放电需求和全局约束。
+   │
+   ├─ pipeline/
+   │  ├─ README.md                  # Pipeline 总控说明。
+   │  ├─ run_pipeline.py            # 三阶段总入口：串联 Breakdown → Ramp-up → Flat-top。
+   │  └─ state_schema.md            # 过程状态、阶段交接、最终状态字段约定。
+   │
+   ├─ common/
+   │  ├─ adapters.py                # 文档输入/输出与结构转换辅助。
+   │  ├─ constraints.py             # 公共约束检查预留。
+   │  ├─ io.py                      # 公共输入输出工具。
+   │  ├─ state.py                   # 公共状态结构。
+   │  ├─ utils.py                   # 公共工具预留。
+   │  └─ validation.py              # 公共验证辅助。
+   │
+   ├─ stages/
+   │  ├─ stage_1_breakdown/
+   │  │  ├─ README.md               # 击穿阶段说明。
+   │  │  ├─ example.yaml            # 击穿阶段示例输入。
+   │  │  ├─ generate.py             # 击穿阶段生成入口。
+   │  │  ├─ models.py               # 击穿阶段数据模型。
+   │  │  ├─ physics.py              # 第一阶段物理计算辅助。
+   │  │  ├─ validation.py           # 击穿阶段验证。
+   │  │  └─ 第一阶段物理过程.md      # 第一阶段详细物理说明。
+   │  │
+   │  ├─ stage_2_rampup/
+   │  │  ├─ README.md               # 电流爬升阶段说明。
+   │  │  ├─ example.yaml            # 爬升阶段示例输入。
+   │  │  ├─ generate.py             # 爬升阶段生成入口。
+   │  │  ├─ models.py               # 爬升阶段数据模型。
+   │  │  ├─ validation.py           # 爬升阶段验证。
+   │  │  └─ 第二阶段物理过程.md      # 第二阶段详细物理说明。
+   │  │
+   │  └─ stage_3_flattop/
+   │     ├─ README.md               # 平顶阶段说明。
+   │     ├─ example.yaml            # 平顶阶段示例输入。
+   │     ├─ generate.py             # 平顶阶段生成入口。
+   │     ├─ models.py               # 平顶阶段数据模型。
+   │     ├─ validation.py           # 平顶阶段验证。
+   │     └─ 第三阶段物理过程.md      # 第三阶段详细物理说明。
+   │
+   └─ outputs/
+      ├─ README.md                  # 输出目录说明。
+      ├─ sparc_demo_discharge/      # Pipeline 示例输出。
+      ├─ stage_1_breakdown/         # Stage 1 单独运行输出。
+      ├─ stage_2_rampup/            # Stage 2 单独运行输出。
+      └─ stage_3_flattop/           # Stage 3 单独运行输出。
 ```
 
-推荐从 `SKILL.md`、`docs/02_facility_and_constraints.md` 和 `pipeline/README.md` 开始阅读。
+推荐从 `sparc_discharge_waveform_skill/SKILL.md`、`sparc_discharge_waveform_skill/docs/02_facility_and_constraints.md`、`sparc_discharge_waveform_skill/docs/03_workflows.md` 和 `sparc_discharge_waveform_skill/pipeline/README.md` 开始阅读。
 
 ---
 
@@ -140,21 +166,20 @@ sparc_discharge_waveform_skill/docs/02_facility_and_constraints.md
 
 ## 3. 物理过程：输入如何一步步变成结果
 
-真实托卡马克放电控制非常复杂。本项目将它简化成一条可复查的数据链：
+本项目现在采用的不是纯经验插值口径，而是**三阶段最小真实物理约束流程**：
 
 ```text
 用户目标放电需求
   → 统一输入文件
-  → 三阶段目标拆解
-  → 每阶段生成线圈候选波形
+  → Breakdown：击穿电路与零场预置
+  → Ramp-up：Ip / Lp / Rp / CS 伏秒 / PF 成形
+  → Flat-top：平台维持环电压 / PF 保持 / Div / VS 裕度
   → 阶段间状态交接
   → 合并三阶段波形
   → 输出验证报告和修正建议
 ```
 
 ### 3.1 用户输入的不是线圈电流，而是放电目标
-
-实验设计中，用户通常不会直接指定 `CS1`、`PF2` 等线圈在每个时刻的电流。更合理的输入是目标等离子体状态和装置约束。
 
 统一输入文件是：
 
@@ -174,88 +199,45 @@ sparc_discharge_waveform_skill/config/input_template.yaml
 | 工程约束 | `coils.*.I_min_MA`、`I_max_MA`、`dI_dt_max_MA_per_s` | 线圈电流和变化率限制。 |
 | 伏秒约束 | `constraints.cs_flux_budget_Vs`、`min_cs_flux_margin_fraction` | CS 可用磁通和剩余裕度。 |
 
-其中，真正随实验目标经常变化的是：
-
-- 平顶目标电流 `Ip_flat_MA`；
-- 三阶段时间安排；
-- 目标位形，例如 `R_axis_m`、`minor_radius_m`、`kappa_flat`、`delta_flat`、`x_point`；
-- 平顶持续时间和伏秒裕度要求。
-
-线圈上下限、变化率、背景磁场等更多是装置约束，不是每次实验都手动设计的目标。
-
 ### 3.2 三阶段物理过程
-
-完整流程按三个阶段执行。
 
 #### Stage 1：Breakdown 击穿
 
-目标：从真空和预充气状态形成初始等离子体。
+目标：形成初始等离子体并建立种子电流。
 
-主要逻辑：
+核心口径：
 
-```text
-目标击穿条件
-  → CS 提供环向电压
-  → PF3/PF4 形成击穿零场区
-  → 得到种子 Ip 和击穿末态
-```
-
-本阶段重点：
-
-- `CS1/CS2/CS3` 从预充磁状态开始变化，产生击穿所需 loop voltage；
-- `PF3/PF4` 负责在击穿区形成低极向场；
-- `PF1/PF2` 只做辅助修正；
-- `Div/VS` 不参与主设计；
+- 用目标 `Ip_seed` 构造简化 `Ip(t)`；
+- 用 \(V_{loop}=L_0\,dI_p/dt + R_p I_p\) 检查击穿所需环电压；
+- 用 \(V_{loop,CS}=-M_{CS}\,dI_{CS}/dt\) 反推 CS swing；
+- 用 PF 场系数矩阵约束击穿点零场预置；
 - 输出 `handoff_to_stage_2`。
 
 #### Stage 2：Ramp-up 电流爬升
 
-目标：将等离子体电流从种子电流升到平顶目标电流，同时逐步形成目标位形。
+目标：把 `Ip` 从种子电流升到平顶目标，同时逐步形成目标位形。
 
-主要逻辑：
+核心口径：
 
-```text
-Stage 1 末态
-  → Ip(t) 爬升目标
-  → loop voltage 需求
-  → CS 波形
-  → 目标 R/a/κ/δ/X-point 演化
-  → PF1/PF2/PF3/PF4 波形
-  → Ramp-up 末态
-```
-
-本阶段重点：
-
-- `CS` 负责持续驱动 `Ip` 上升并管理伏秒消耗；
-- `PF4/PF3` 负责主半径、径向/垂直平衡和 X 点形成；
-- `PF1/PF2` 负责拉长比、三角形变和边界成形；
-- `Div` 在后段缓慢接近平顶设定；
-- `VS` 只检查裕度；
+- 给定 `Ip(t)`、`shape(t)`；
+- 计算 \(L_p(t)\)、\(R_p(t)\)、\(V_{loop,req}(t)\)；
+- 用 CS 互感方程反推 `CS1/CS2/CS3`；
+- 用 Shafranov 型垂直场需求与 PF 响应矩阵求解 `PF1-4`；
+- 统计 Ramp-up 伏秒消耗与剩余裕度；
 - 输出 `handoff_to_stage_3`。
 
 #### Stage 3：Flat-top 平顶维持
 
-目标：维持目标平顶电流、目标位形、X 点和偏滤器构型。
+目标：维持目标平顶电流、位形、X 点与偏滤器构型。
 
-主要逻辑：
+核心口径：
 
-```text
-Stage 2 末态
-  → Ip_flat 保持
-  → CS 低环电压慢速维持
-  → PF 保持形状和平衡
-  → Div 微调打击点
-  → VS 输出裕度
-  → final_state
-```
-
-本阶段重点：
-
-- `CS1/CS2/CS3` 缓慢变化，维持电流并检查剩余伏秒；
-- `PF1/PF2` 维持边界、拉长比和三角形变；
-- `PF3/PF4` 维持主半径、整体平衡、X 点和偏滤器入口位形；
-- `Div1/Div2` 做打击点固定设定或小幅扫描；
-- `VS` 输出基准值和可用控制范围；
+- 以平台保持为主，`dIp/dt` 接近 0；
+- 用 \(V_{loop,req}=d(L_p I_p)/dt + R_p I_p\) 计算低环电压维持需求；
+- 用 CS 互感关系估算平台伏秒消耗；
+- 用 PF 响应矩阵维持位形和 X 点；
+- 用 Div 维持或微扫打击点；
+- 用 VS 只输出基准值和稳定裕度；
 - 输出 `final_state`。
 
 ### 3.3 最终输出
@@ -310,12 +292,6 @@ python sparc_discharge_waveform_skill/stages/stage_3_flattop/generate.py
 
 ### 5.1 Skill 化的核心思想
 
-原始问题是：
-
-> 给定目标托卡马克放电，如何规划 CS/PF 等线圈的三阶段电流波形？
-
-这个问题很复杂，涉及击穿、升流、平衡、成形、偏滤器、伏秒、线圈限幅和稳定性。项目将其 Skill 化为：
-
 ```text
 装置假设文档
   → 统一输入模板
@@ -325,116 +301,30 @@ python sparc_discharge_waveform_skill/stages/stage_3_flattop/generate.py
   → 输出报告
 ```
 
-这样 Agent 不需要一次性“凭空设计完整波形”，而是可以按固定步骤读取文件、运行阶段、检查结果和提出修改建议。
+Agent 不需要凭空设计完整波形，而应按固定步骤读取文件、理解阶段边界、检查交接状态、运行 Pipeline、读取输出并给出修改建议。
 
 ### 5.2 Agent 看到本 Skill 后应该怎么工作
 
-Agent 的推荐工作流程如下。
+推荐工作流如下：
 
-#### 第一步：理解项目边界
-
-先阅读：
-
-```text
-SKILL.md
-README.md
-docs/01_project_summary.md
-docs/02_facility_and_constraints.md
-```
-
-目的：明确这不是完整 SPARC 仿真，而是基于简化装置的离线候选波形设计。
-
-#### 第二步：理解三阶段数据流
-
-继续阅读：
-
-```text
-docs/03_workflows.md
-pipeline/README.md
-pipeline/state_schema.md
-```
-
-目的：明确 Stage 1、Stage 2、Stage 3 如何传递 `Ip`、线圈电流、位形和 CS 伏秒状态。
-
-#### 第三步：读取用户输入
-
-读取：
-
-```text
-config/input_template.yaml
-```
-
-Agent 应识别：
-
-- 哪些是用户目标；
-- 哪些是装置固定约束；
-- 哪些是工程限幅；
-- 哪些字段不应该手动作为阶段中间状态填写。
-
-#### 第四步：运行 Pipeline
-
-运行：
-
-```text
-pipeline/run_pipeline.py
-```
-
-Pipeline 负责：
-
-1. 读取统一输入；
-2. 校验全局字段；
-3. 生成 Stage 1 结果；
-4. 将 Stage 1 末态交给 Stage 2；
-5. 将 Stage 2 末态交给 Stage 3；
-6. 合并最终波形；
-7. 写出报告。
-
-#### 第五步：检查输出并反馈
-
-Agent 应读取：
-
-```text
-outputs/<case_name>/process_state.json
-outputs/<case_name>/stage_summary.md
-outputs/<case_name>/validation_report.md
-outputs/<case_name>/revision_suggestions.md
-```
-
-然后回答：
-
-- 波形是否生成成功；
-- 三阶段是否连续；
-- 哪些约束通过；
-- 哪些约束存在风险；
-- 下一轮应该调哪些输入目标或约束。
+1. 先阅读 `SKILL.md`、`README.md`、`docs/02_facility_and_constraints.md`；
+2. 再阅读 `docs/03_workflows.md`、`pipeline/README.md`、`pipeline/state_schema.md`；
+3. 明确三阶段已升级为“最小真实物理约束流程”，不是纯经验阶段插值；
+4. 读取 `config/input_template.yaml` 识别用户目标与装置约束；
+5. 运行 `pipeline/run_pipeline.py` 或按同一数据流做人工推演；
+6. 检查 `outputs/<case_name>/` 下的过程状态、报告和建议；
+7. 优先建议调整输入目标、阶段时长、伏秒预算和成形目标，而不是跳过物理约束直接声称通过。
 
 ### 5.3 各目录在 Skill 中的角色
 
 | 目录 | 在 Skill 中的作用 |
 |---|---|
-| `docs/` | 给 Agent 提供物理背景、装置假设、阶段工作流和 I/O 规则。 |
-| `config/` | 给用户和 Agent 一个统一输入入口。 |
+| `docs/` | 提供物理背景、装置假设、阶段工作流和 I/O 规则。 |
+| `config/` | 提供统一输入入口。 |
 | `pipeline/` | 把三阶段组织成完整流程，是运行总入口。 |
-| `stages/` | 具体阶段工作包，每个阶段独立说明目标、模型、验证和输出。 |
-| `common/` | 放置公共状态、读写和验证工具，避免 Pipeline 层重复造结构。 |
-| `outputs/` | 保存波形、状态、报告和修正建议，供复查和迭代。 |
-
-### 5.4 为什么这样设计适合学生作业
-
-这个项目有意避免过度工程化和过度物理复杂化：
-
-- 不做完整 MHD / 自由边界平衡求解；
-- 不追求最优波形；
-- 不模拟实时控制系统；
-- 不要求真实 SPARC 工程参数完全准确；
-- 重点展示问题拆解、阶段数据流、约束检查和迭代思路。
-
-它适合用来展示：
-
-1. 如何把复杂聚变工程问题拆成阶段；
-2. 如何把物理目标转化为可计算输入；
-3. 如何把候选线圈波形与约束检查串起来；
-4. 如何把 AI Agent 的工作流程封装成 Skill。
+| `stages/` | 提供各阶段的目标、输入、物理链路、验证与交接约定。 |
+| `common/` | 放置公共状态、读写和验证工具。 |
+| `outputs/` | 保存波形、状态、报告和修正建议。 |
 
 ---
 
@@ -452,11 +342,11 @@ outputs/<case_name>/revision_suggestions.md
 真实 SPARC 实验可直接执行的最终控制波形
 ```
 
-因此，判断项目是否完成的重点不是“波形是否最优”，而是：
+判断项目是否完成的重点不是“波形是否最优”，而是：
 
 - 装置假设是否清楚；
 - 三阶段拆解是否合理；
-- 输入输出是否自洽；
+- 物理链路是否自洽；
 - 阶段间状态是否连续；
 - 约束检查是否覆盖主要风险；
 - Agent 是否能根据 Skill 文档稳定复现流程。
@@ -465,4 +355,4 @@ outputs/<case_name>/revision_suggestions.md
 
 ## 7. 一句话总结
 
-本项目将“托卡马克放电线圈电流波形设计”简化为一个可运行、可复查、可由 Agent 执行的 Skill：在简化 SPARC 装置假设下，用户输入目标放电需求，Pipeline 串联 Breakdown、Ramp-up、Flat-top 三阶段，生成 CS/PF/Div/VS 候选波形，并输出验证报告与修正建议。
+本项目将“托卡马克放电线圈电流波形设计”封装成一个可运行、可复查、可由 Agent 执行的 Skill：在简化 SPARC 装置边界下，以三阶段最小真实物理约束模型组织 Breakdown、Ramp-up、Flat-top，生成 CS / PF / Div / VS 候选波形，并输出验证报告与修正建议。

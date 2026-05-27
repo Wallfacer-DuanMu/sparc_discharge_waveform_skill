@@ -107,7 +107,64 @@ constraints:
 
 ## 击穿要求 击穿后种子电流 击穿后环向电压 击穿后等离子体电流 击穿后等离子体形状 击穿后等离子体位置 击穿后等离子体拉长比 击穿后等离子体三角形变 击穿后等离子体偏滤器构型
 
+physics:
+  plasma_resistance_ohm: 1.0e-5
+  loop_voltage_tolerance_fraction: 0.25
+  cs_mutual_inductance_H:
+    CS1: 1.2e-3
+    CS2: 1.5e-3
+    CS3: 1.2e-3
+  pf_field_coefficients_T_per_MA:
+    PF1:
+      Br: 0.0010
+      Bz: 0.0015
+    PF2:
+      Br: -0.0010
+      Bz: 0.0015
+    PF3:
+      Br: 0.0030
+      Bz: 0.0120
+    PF4:
+      Br: 0.0000
+      Bz: -0.0100
+  stage_3:
+    target_loop_voltage_V: 0.8
+    max_loop_voltage_V: 2.5
+    max_flux_consumption_Wb: 15.0
+    max_stage_3_consumption_Wb: 15.0
+    total_available_Wb: 120.0
+    plasma_resistance:
+      mode: hold_with_small_variation
+      R_flat_ohm: 1.0e-7
+      variation_fraction: 0.10
+      Te_flat_eV: 3000.0
+    internal_inductance:
+      flat: 0.78
+      ripple_amplitude: 0.01
+    poloidal_beta:
+      flat: 0.35
+      ripple_amplitude: 0.02
+    pf_response_matrix:
+      rows: [Bv, Br, G_kappa, G_delta, G_Z, G_X]
+      columns: [PF1, PF2, PF3, PF4]
+      values:
+        - [0.002, 0.004, 0.010, 0.018]
+        - [0.001, -0.001, 0.004, 0.000]
+        - [0.020, 0.030, 0.006, 0.002]
+        - [0.004, 0.018, 0.010, 0.002]
+        - [0.001, -0.001, 0.006, 0.001]
+        - [0.002, 0.005, 0.008, 0.003]
+    div_response_matrix:
+      rows: [strike_R, strike_Z]
+      columns: [Div1, Div2]
+      values:
+        - [0.020, -0.015]
+        - [0.010, 0.010]
+    solver:
+      pf_regularization: 0.01
+      div_regularization: 0.01
 
+## 最小物理约束参数：Stage 1/2 使用 CS 互感和 PF 场系数；Stage 3 使用平台电路方程、CS 互感、PF/Div 等效响应矩阵。
 
 options:
   waveform_style: smooth_piecewise_linear
@@ -117,3 +174,8 @@ options:
     - markdown
   make_plots: true
   output_root: outputs
+  cs_swing_share:
+    CS1: 0.30
+    CS2: 0.40
+    CS3: 0.30
+  pf_null_preset_target_MA: {}

@@ -4,6 +4,25 @@ from __future__ import annotations
 
 from typing import Any
 
+try:
+    from sparc_discharge_waveform_skill.common.adapters import (
+        build_stage_2_config_from_global,
+        build_stage_3_config_from_stage_2_result,
+        normalize_stage_2_result_for_pipeline,
+        normalize_stage_3_result_for_pipeline,
+    )
+    from sparc_discharge_waveform_skill.stages.stage_1_breakdown.generate import generate_breakdown
+    from sparc_discharge_waveform_skill.stages.stage_2_rampup.generate import generate_rampup
+    from sparc_discharge_waveform_skill.stages.stage_3_flattop.generate import generate_flattop
+except ImportError:  # pragma: no cover - pipeline 直接运行时由 sys.path 处理
+    build_stage_2_config_from_global = None  # type: ignore[assignment]
+    build_stage_3_config_from_stage_2_result = None  # type: ignore[assignment]
+    normalize_stage_2_result_for_pipeline = None  # type: ignore[assignment]
+    normalize_stage_3_result_for_pipeline = None  # type: ignore[assignment]
+    generate_breakdown = None  # type: ignore[assignment]
+    generate_rampup = None  # type: ignore[assignment]
+    generate_flattop = None  # type: ignore[assignment]
+
 COIL_NAMES = ("CS1", "CS2", "CS3", "PF1", "PF2", "PF3", "PF4", "Div1", "Div2", "VS")
 
 
@@ -43,31 +62,70 @@ def make_empty_process_state(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def make_stage_1_result(config: dict[str, Any]) -> dict[str, Any]:
-    """生成最小 Breakdown 阶段结果。"""
-    timeline = config["timeline"]
-    target = config["target"]
-    constraints = config["constraints"]
-    duration = float(timeline["breakdown_end_s"]) - float(timeline["t_start_s"])
-    flux_used = float(constraints["breakdown_loop_voltage_V"]) * duration
-    flux_budget = float(constraints["cs_flux_budget_Vs"])
+    """生成 Breakdown 阶段结果。
 
+    Pipeline 入口复用 stage_1_breakdown.generate 的最小物理约束模型，避免全局流程
+    仍停留在旧的占位经验结果。
+    """
+
+    timeline = config["timeline"]
+    if generate_breakdown is None:
+        target = config["target"]
+        constraints = config["constraints"]
+        duration = float(timeline["breakdown_end_s"]) - float(timeline["t_start_s"])
+        flux_used = float(constraints["breakdown_loop_voltage_V"]) * duration
+        flux_budget = float(constraints["cs_flux_budget_Vs"])
+        return {
+            "stage_name": "breakdown",
+            "time_range_s": {
+                "start": float(timeline["t_start_s"]),
+                "end": float(timeline["breakdown_end_s"]),
+            },
+            "Ip_at_breakdown_end_MA": float(target["Ip_seed_MA"]),
+            "coil_state_at_breakdown_end": initial_coil_state(config),
+            "cs_flux_used_breakdown_Vs": round(flux_used, 6),
+            "cs_flux_remaining_after_breakdown_Vs": round(flux_budget - flux_used, 6),
+            "waveform_ref": f"outputs/{config.get('case_name', 'unnamed_case')}/stage_1_breakdown_waveform.csv",
+            "breakdown_validation": make_validation(flux_budget > flux_used),
+        }
+
+    result = generate_breakdown(config)
     return {
         "stage_name": "breakdown",
         "time_range_s": {
             "start": float(timeline["t_start_s"]),
             "end": float(timeline["breakdown_end_s"]),
         },
-        "Ip_at_breakdown_end_MA": float(target["Ip_seed_MA"]),
-        "coil_state_at_breakdown_end": initial_coil_state(config),
-        "cs_flux_used_breakdown_Vs": round(flux_used, 6),
-        "cs_flux_remaining_after_breakdown_Vs": round(flux_budget - flux_used, 6),
+        "Ip_at_breakdown_end_MA": float(result["Ip_at_breakdown_end_MA"]),
+        "coil_state_at_breakdown_end": result["coil_state_at_breakdown_end"],
+        "cs_flux_used_breakdown_Vs": round(float(result["cs_flux_used_breakdown_Vs"]), 6),
+        "cs_flux_remaining_after_breakdown_Vs": round(float(result["cs_flux_remaining_after_breakdown_Vs"]), 6),
+        "zero_field_error_T": float(result["zero_field_error_T"]),
+        "physics_diagnostics": result.get("physics_diagnostics", {}),
         "waveform_ref": f"outputs/{config.get('case_name', 'unnamed_case')}/stage_1_breakdown_waveform.csv",
-        "breakdown_validation": make_validation(flux_budget > flux_used),
+        "breakdown_validation": result["breakdown_validation"],
     }
 
 
-def make_stage_2_result(config: dict[str, Any], stage_1_result: dict[str, Any]) -> dict[str, Any]:
-    """生成最小 Ramp-up 阶段结果。"""
+def make_stage_2_result(
+    config: dict[str, Any],
+    stage_1_result: dict[str, Any],
+    use_stage_generator: bool | None = None,
+) -> dict[str, Any]:
+    """生成 Ramp-up 阶段结果。
+
+    默认保持旧占位逻辑；当 options.stage_execution_mode 为 stage_generators，
+    或 use_stage_generator=True 时，调用 stages/stage_2_rampup.generate_rampup。
+    """
+
+    if use_stage_generator is None:
+        use_stage_generator = config.get("options", {}).get("stage_execution_mode") in {"stage_generators", "real_stage_2"}
+
+    if use_stage_generator and generate_rampup is not None and build_stage_2_config_from_global is not None and normalize_stage_2_result_for_pipeline is not None:
+        stage_2_config = build_stage_2_config_from_global(config, stage_1_result)
+        raw_result = generate_rampup(stage_2_config)
+        return normalize_stage_2_result_for_pipeline(raw_result, config, stage_1_result)
+
     timeline = config["timeline"]
     target = config["target"]
     flux_remaining = float(stage_1_result["cs_flux_remaining_after_breakdown_Vs"])
@@ -77,6 +135,7 @@ def make_stage_2_result(config: dict[str, Any], stage_1_result: dict[str, Any]) 
 
     return {
         "stage_name": "rampup",
+        "execution_mode": "placeholder",
         "time_range_s": {
             "start": float(timeline["breakdown_end_s"]),
             "end": float(timeline["rampup_end_s"]),
@@ -94,7 +153,17 @@ def make_stage_2_result(config: dict[str, Any], stage_1_result: dict[str, Any]) 
 
 
 def make_stage_3_result(config: dict[str, Any], stage_2_result: dict[str, Any]) -> dict[str, Any]:
-    """生成最小 Flat-top 阶段结果。"""
+    """生成 Flat-top 阶段结果。
+
+    当 options.stage_execution_mode 为 stage_generators 时，调用 Stage 3 最小物理维持模型；
+    否则保留旧占位逻辑，便于对比。
+    """
+    use_stage_generator = config.get("options", {}).get("stage_execution_mode") in {"stage_generators", "real_stage_3"}
+    if use_stage_generator and generate_flattop is not None and build_stage_3_config_from_stage_2_result is not None and normalize_stage_3_result_for_pipeline is not None:
+        stage_3_config = build_stage_3_config_from_stage_2_result(config, stage_2_result)
+        raw_result = generate_flattop(stage_3_config)
+        return normalize_stage_3_result_for_pipeline(raw_result, config, stage_2_result)
+
     timeline = config["timeline"]
     target = config["target"]
     coils = config["coils"]

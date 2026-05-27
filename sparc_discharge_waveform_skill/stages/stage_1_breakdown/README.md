@@ -2,7 +2,7 @@
 
 本工作包负责完成三阶段放电设计中的第一阶段：`Breakdown`。它的任务不是生成完整平顶位形，而是在固定 TF 背景场下，用 CS 产生击穿所需的环向电压，用 PF3/PF4 建立击穿区低极向场预置，并得到可交给 Ramp-up 阶段继续使用的初始等离子体和线圈末态。
 
-本阶段坚持简化原则：只做学生作业所需的清晰推演，不做完整自由边界平衡求解，也不模拟实时反馈控制。
+当前版本的关键变化是：本阶段说明已同步到**最小真实物理约束口径**。也就是说，Breakdown 不再只描述“目标击穿电压 + 平滑波形”，而是明确采用等离子体电路、CS 互感和 PF 零场预置三条核心关系。
 
 ---
 
@@ -40,6 +40,7 @@ Breakdown 阶段需要回答四个问题：
 | `coils` | 线圈初始电流、限幅和变化率 |
 | `constraints` | 击穿电压、伏秒预算、零场质量等约束 |
 | `options` | 波形风格、输出格式和简化开关 |
+| `physics` | 击穿物理参数，如互感、等效电阻和 PF 场系数 |
 
 ---
 
@@ -51,7 +52,7 @@ Breakdown 阶段需要回答四个问题：
 |---|---|---|
 | `device.B0_T` | TF 提供的背景环向磁场 | 固定，不生成动态 TF 波形 |
 | `device.R0_m` | 大半径参考值 | 用于击穿区位置说明 |
-| `device.a_m` | 小半径参考值 | 用于量级判断 |
+| `device.a_m` | 小半径参考值 | 用于真空环电感量级判断 |
 
 ### 3.2 时间安排
 
@@ -69,7 +70,7 @@ Breakdown 阶段需要回答四个问题：
 |---|---|---|
 | `target.Ip_seed_MA` | 击穿结束时的目标种子电流 | `>= 0`，且远小于平顶电流 |
 
-本阶段的 `Ip(t)` 可以用平滑线性函数从 0 过渡到 `Ip_seed_MA`。这里的 `Ip` 是简化估计值，不代表完整等离子体输运模拟结果。
+本阶段的 `Ip(t)` 用于表示初始等离子体建立过程，并作为后续电路计算和阶段交接的目标轨迹。
 
 ### 3.4 线圈输入
 
@@ -77,27 +78,29 @@ Breakdown 阶段需要回答四个问题：
 
 | 线圈组 | 本阶段职责 |
 |---|---|
-| `CS1/CS2/CS3` | 从预充磁电流开始变化，产生击穿 loop voltage |
+| `CS1/CS2/CS3` | 从预充磁电流开始变化，产生击穿环电压 |
 | `PF3/PF4` | 形成击穿区低极向场，即零场预置主力 |
 | `PF1/PF2` | 做小幅局部修正，避免初始磁场结构过差 |
 | `Div1/Div2` | 击穿阶段不参与主设计，默认保持 0 或初始值 |
 | `VS` | 不生成快速反馈波形，只保留基准值和裕度 |
 | `TF` | 用 `device.B0_T` 表示固定背景场 |
 
-每个线圈组至少应给出：
+### 3.5 物理参数
 
-- `I0_MA`：阶段初始电流；
-- `I_min_MA`：允许最小电流；
-- `I_max_MA`：允许最大电流；
-- `dI_dt_max_MA_per_s`：最大变化率。
-
-`VS` 可不设置 `dI_dt_max_MA_per_s`，但必须设置 `reserved_fraction`，表示为实时反馈保留的裕度比例。
-
-### 3.5 约束输入
+本阶段特别依赖：
 
 | 字段 | 含义 |
 |---|---|
-| `constraints.breakdown_loop_voltage_V` | 击穿阶段目标 loop voltage |
+| `physics.cs_mutual_inductance_H` | `CS1/CS2/CS3` 对环电压的等效互感 |
+| `physics.plasma_resistance_ohm` | 击穿阶段极简等效等离子体电阻 |
+| `physics.pf_field_coefficients_T_per_MA` | PF 线圈对击穿点 `Br/Bz` 的等效影响系数 |
+| `physics.breakdown_field_threshold_V_per_m` | 击穿电场阈值，可选 |
+
+### 3.6 约束输入
+
+| 字段 | 含义 |
+|---|---|
+| `constraints.breakdown_loop_voltage_V` | 击穿阶段目标环电压 |
 | `constraints.cs_flux_budget_Vs` | 三阶段 CS 总伏秒预算 |
 | `constraints.breakdown_zero_field_tolerance_T` | 击穿区简化零场容许误差 |
 | `constraints.min_cs_flux_margin_fraction` | 全流程至少保留的 CS 伏秒裕度比例 |
@@ -143,27 +146,27 @@ Breakdown 阶段需要回答四个问题：
 - 终点为 `target.Ip_seed_MA`；
 - 中间平滑上升，不允许阶跃。
 
-推荐初版采用 `smooth_piecewise_linear`：即线性上升，两端可做简单平滑处理。若暂不实现平滑函数，也必须保证连续。
+推荐用 `smoothstep` 或其他平滑轨迹，以便后续 `dIp/dt` 和环电压计算稳定。
 
-### Step 4：估算 CS 击穿 swing
+### Step 4：计算所需环电压并反推 CS swing
 
-根据目标击穿电压估算本阶段所需 CS 伏秒：
+Breakdown 的最小物理链路是：
 
 ```text
-cs_flux_used_breakdown_Vs = breakdown_loop_voltage_V * (breakdown_end_s - t_start_s)
+Ip(t)
+  → dIp/dt
+  → V_loop_required = L0 * dIp/dt + Rp * Ip
+  → V_loop_CS = -sum(M_CS_i * dI_CS_i/dt)
+  → CS1/CS2/CS3 波形
 ```
 
-然后把击穿需求分配给 `CS1/CS2/CS3`。
+其中：
 
-推荐简化分配规则：
+```text
+L0 = μ0 * R0 * (ln(8R0/a) - 2)
+```
 
-| 线圈 | 分担比例 |
-|---|---:|
-| `CS1` | 0.30 |
-| `CS2` | 0.40 |
-| `CS3` | 0.30 |
-
-初版不需要建立真实互感矩阵，可以用“目标 CS 电流变化量”代表产生 loop voltage 的 swing。生成时应满足：
+生成时应满足：
 
 - 三组 CS 从各自 `I0_MA` 连续变化；
 - 方向统一，体现预充磁释放；
@@ -172,25 +175,30 @@ cs_flux_used_breakdown_Vs = breakdown_loop_voltage_V * (breakdown_end_s - t_star
 
 ### Step 5：生成 PF 零场预置
 
-本阶段重点使用 `PF3/PF4` 做击穿区零场预置。
-
-推荐简化规则：
-
-- `PF4` 负责主要垂直场抵消，变化幅度最大；
-- `PF3` 负责辅助平衡和击穿区位置修正；
-- `PF1/PF2` 只做小幅修正，幅度应明显小于 `PF3/PF4`；
-- `Div1/Div2` 保持 0 或初始值；
-- `VS` 保持基准值，不参与快速控制。
-
-零场质量可以先用一个简化指标表示：
+本阶段重点使用 `PF3/PF4` 做击穿区零场预置。不做完整 Biot-Savart，而是使用击穿点 PF 场影响系数矩阵：
 
 ```text
-zero_field_error_T = abs(weighted_sum(PF1..PF4) - target_null_field)
+Br = sum(cR_i * I_PF_i)
+Bz = sum(cZ_i * I_PF_i)
+zero_field_error_T = sqrt(Br^2 + Bz^2)
 ```
 
-初版可以不追求真实磁场计算，只要求 `zero_field_error_T <= breakdown_zero_field_tolerance_T`，并在报告中说明这是简化检查。
+其中：
 
-### Step 6：合并本阶段波形
+- `PF3/PF4` 是主调节对象；
+- `PF1/PF2` 只做小幅修正；
+- 若配置没有直接给出 PF 目标电流，则按系数矩阵反推等效预置值。
+
+### Step 6：执行基础物理验证
+
+除工程约束外，建议至少报告以下物理诊断：
+
+- `V_loop_required` 与 `V_loop_cs` 的跟踪误差；
+- 击穿点 `Br/Bz` 与零场误差；
+- `E = V_loop / (2πR0)` 是否达到击穿阈值；
+- `∫ V_loop dt` 对应的本阶段伏秒消耗。
+
+### Step 7：合并本阶段波形
 
 每个时间点应输出同一套字段：
 
@@ -206,7 +214,7 @@ zero_field_error_T = abs(weighted_sum(PF1..PF4) - target_null_field)
 | `B0_T` | 固定背景环向场 |
 | `note` | 起点、击穿中、终点等说明 |
 
-### Step 7：提取阶段末态
+### Step 8：提取阶段末态
 
 在最后一个时间点提取：
 
@@ -216,10 +224,6 @@ zero_field_error_T = abs(weighted_sum(PF1..PF4) - target_null_field)
 - `cs_flux_remaining_after_breakdown_Vs`。
 
 其中 `coil_state_at_breakdown_end` 必须包含 `CS1/CS2/CS3/PF1/PF2/PF3/PF4/Div1/Div2/VS`，因为 Ramp-up 阶段要直接接收它作为初态。
-
-### Step 8：执行验证
-
-验证通过后，才认为本阶段结果可交给 Ramp-up。
 
 ---
 
@@ -233,11 +237,13 @@ zero_field_error_T = abs(weighted_sum(PF1..PF4) - target_null_field)
 | 输入初值 | 所有 `I0_MA` 在上下限内 | 调整线圈初始电流或限幅 |
 | CS 电流限幅 | `I_min_MA <= I_CS <= I_max_MA` | 减小 CS swing 或调整预充磁 |
 | CS 变化率 | `abs(dI/dt) <= dI_dt_max` | 延长击穿时间或重新分配 CS 比例 |
-| CS 伏秒消耗 | 本阶段消耗小于总预算，且保留后续裕度 | 降低目标击穿电压或延长整体方案 |
+| CS 伏秒消耗 | 本阶段消耗小于总预算，且保留后续裕度 | 降低目标环电压或延长整体方案 |
 | PF 电流限幅 | PF1-4 均在限幅内 | 降低零场预置幅度或重新分配 PF3/PF4 |
 | PF 变化率 | PF1-4 变化率不超限 | 延长预置时间或减小修正幅度 |
 | 零场质量 | `zero_field_error_T <= tolerance` | 优先调整 PF4，再调整 PF3，最后微调 PF1/PF2 |
-| 种子电流 | 终点接近 `Ip_seed_MA` | 提高 loop voltage 或延长 breakdown |
+| 种子电流 | 终点接近 `Ip_seed_MA` | 提高击穿能力或延长 breakdown |
+| 环电压跟踪 | `V_loop_cs` 接近 `V_loop_required` | 调整互感参数或 CS 分担 |
+| 电场阈值 | `E >= E_breakdown_threshold` | 提高环电压或延长击穿窗口 |
 | 波形连续性 | 不出现非物理阶跃 | 使用平滑函数或增加过渡点 |
 
 ---
@@ -297,5 +303,7 @@ stage_1_result:
 3. `Div1/Div2` 击穿阶段不参与主设计；
 4. `PF3/PF4` 是击穿零场预置主力；
 5. `PF1/PF2` 只做小幅修正；
-6. `CS1/CS2/CS3` 共同承担击穿 loop voltage；
+6. `CS1/CS2/CS3` 共同承担击穿环电压；
 7. 初版不做完整磁场平衡求解，只做量级、趋势和约束检查。
+
+一句话说：**Stage 1 现在的标准描述应理解为“用最小电路与零场约束解释击穿”，而不是“给一段经验型起始波形”。**

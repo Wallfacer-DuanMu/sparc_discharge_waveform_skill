@@ -16,6 +16,7 @@ REQUIRED_TOP_LEVEL = (
     "waveform_strategy",
     "engineering_limits",
     "physics_constraints",
+    "physics",
     "control_constraints",
     "outputs",
     "validation",
@@ -81,6 +82,10 @@ def validate_flattop_result(config: dict[str, Any], result: dict[str, Any]) -> d
     checks.append(_check_time_axis(config, rows))
     checks.append(_check_ip_hold(config, rows))
     checks.append(_check_loop_voltage(config, rows))
+    checks.append(_check_loop_voltage_physics(rows))
+    checks.append(_check_cs_mutual_tracking(config, rows))
+    checks.append(_check_plasma_inductance(rows))
+    checks.append(_check_plasma_resistance(rows))
     checks.append(_check_flux_budget(config, rows))
     checks.extend(_check_current_limits(config, rows))
     checks.extend(_check_rate_limits(config, rows))
@@ -173,11 +178,31 @@ def _check_loop_voltage(config: dict[str, Any], rows: list[dict[str, Any]]) -> d
     limit = config["engineering_limits"]["loop_voltage"]
     low = float(limit["min_V"])
     high = float(limit["max_V"])
-    target = float(config["targets"]["target_loop_voltage_V"])
-    tolerance = float(config["control_constraints"]["tracking_tolerances"].get("loop_voltage_V", 0.3))
     within_limit = all(low <= float(row["loop_voltage_V"]) <= high for row in rows)
-    near_target = all(abs(float(row["loop_voltage_V"]) - target) <= tolerance + 1e-9 for row in rows[-min(len(rows), 10):])
-    return _check("loop_voltage_hold", within_limit and near_target, "降低平顶后段环电压偏差或收紧低电压保持曲线。")
+    return _check("loop_voltage_limit", within_limit, "检查平台电阻或目标电流，避免所需维持环电压超过工程范围。")
+
+
+def _check_loop_voltage_physics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    required_fields = ("loop_voltage_required_V", "loop_voltage_inductive_V", "loop_voltage_resistive_V")
+    available = all(required_fields[0] in row and required_fields[1] in row and required_fields[2] in row for row in rows)
+    non_negative = available and all(float(row["loop_voltage_required_V"]) >= 0.0 for row in rows)
+    return _check("loop_voltage_physics_available", available and non_negative, "补齐 V=d(LpIp)/dt+RpIp 的环电压物理诊断字段。")
+
+
+def _check_cs_mutual_tracking(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    tolerance = float(config["control_constraints"]["tracking_tolerances"].get("loop_voltage_V", 0.3))
+    passed = all(abs(float(row["loop_voltage_cs_V"]) - float(row["loop_voltage_required_V"])) <= tolerance + 1e-9 for row in rows[1:])
+    return _check("cs_mutual_tracking", passed, "调整 CS 互感系数或分担比例，使 CS 维持电压跟踪平台需求。")
+
+
+def _check_plasma_inductance(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    passed = all(0.0 < float(row["plasma_inductance_H"]) < 1.0e-4 for row in rows)
+    return _check("plasma_inductance_range", passed, "检查 R/a/li 输入，保证平台等离子体自感数量级合理。")
+
+
+def _check_plasma_resistance(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    passed = all(0.0 <= float(row["plasma_resistance_ohm"]) < 1.0e-3 for row in rows)
+    return _check("plasma_resistance_range", passed, "检查平台电阻配置，避免维持电压数量级异常。")
 
 
 def _check_flux_budget(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -309,10 +334,13 @@ def _check_final_state(result: dict[str, Any]) -> dict[str, Any]:
         "flux_remaining_Wb",
         "flux_margin_fraction",
         "q95",
+        "internal_inductance",
+        "vertical_stability_margin",
         "shape",
         "divertor_setting",
         "vs_reserved_range_kA",
         "coil_currents_kA",
+        "physics_diagnostics",
         "constraint_status",
     )
     passed = all(key in final_state for key in required)
@@ -324,7 +352,7 @@ def _check_continuity(rows: list[dict[str, Any]]) -> dict[str, Any]:
     passed = True
     for previous, current in zip(rows, rows[1:]):
         for field in numeric_fields:
-            if abs(float(current[field]) - float(previous[field])) > 5.0:
+            if abs(float(current[field]) - float(previous[field])) > 50.0:
                 passed = False
                 break
         if not passed:

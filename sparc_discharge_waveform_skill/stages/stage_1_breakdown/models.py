@@ -12,6 +12,33 @@ from __future__ import annotations
 
 from typing import Any
 
+try:
+    from .physics import (
+        compute_breakdown_field_t,
+        compute_cs_drive_voltage,
+        compute_plasma_circuit_voltage,
+        field_magnitude_t,
+        get_cs_mutual_inductance_h,
+        get_pf_field_coefficients,
+        get_plasma_resistance_ohm,
+        integrate_voltage_to_cs_waveforms,
+        solve_pf_null_targets,
+        vacuum_loop_inductance_h,
+    )
+except ImportError:  # 允许直接 python generate.py 运行
+    from physics import (  # type: ignore
+        compute_breakdown_field_t,
+        compute_cs_drive_voltage,
+        compute_plasma_circuit_voltage,
+        field_magnitude_t,
+        get_cs_mutual_inductance_h,
+        get_pf_field_coefficients,
+        get_plasma_resistance_ohm,
+        integrate_voltage_to_cs_waveforms,
+        solve_pf_null_targets,
+        vacuum_loop_inductance_h,
+    )
+
 
 CS_COILS = ("CS1", "CS2", "CS3")
 PF_COILS = ("PF1", "PF2", "PF3", "PF4")
@@ -80,46 +107,47 @@ def generate_cs_swing(
     coils: dict[str, dict[str, float]],
     share: dict[str, float],
     loop_voltage_v: float,
+    mutual_inductance_h: dict[str, float] | None = None,
 ) -> dict[str, list[float]]:
-    """生成 CS 击穿 swing 波形。
+    """用 CS 互感方程生成击穿 swing 波形。
 
-    这里不用真实互感矩阵，而用一个教学化规则：击穿电压越高，CS 在阶段内释放的
-    电流越多；三组 CS 按 share 分担。方向取负，表示从预充磁状态释放磁通。
+    最小物理约束口径：V_loop = -sum(M_i dI_i/dt)。PF 对环电压的贡献暂忽略，
+    CS1/CS2/CS3 的相对分担仍由 share 控制，但总变化率由互感和目标环电压决定。
     """
 
     duration = times[-1] - times[0]
     if duration <= 0:
         raise ValueError("breakdown duration must be greater than 0")
+    if loop_voltage_v <= 0:
+        raise ValueError("constraints.breakdown_loop_voltage_V must be greater than 0")
 
-    total_share = sum(share.get(name, 0.0) for name in CS_COILS)
-    if total_share <= 0:
-        raise ValueError("options.cs_swing_share must contain positive CS shares")
-
-    result: dict[str, list[float]] = {}
-    # 简化比例：20 V、0.08 s 约对应 0.8 MA 总 swing，便于学生作业量级演示。
-    total_delta_ma = 0.5 * loop_voltage_v * duration
-
-    for name in CS_COILS:
-        coil = coils[name]
-        i0 = float(coil["I0_MA"])
-        normalized_share = share.get(name, 0.0) / total_share
-        target = i0 - total_delta_ma * normalized_share
-        result[name] = _smooth_series(times, i0, target)
-
-    return result
+    mutual = mutual_inductance_h or {"CS1": 1.2e-6, "CS2": 1.5e-6, "CS3": 1.2e-6}
+    return integrate_voltage_to_cs_waveforms(times, coils, share, loop_voltage_v, mutual)
 
 
 def generate_pf_null_preset(
     times: list[float],
     coils: dict[str, dict[str, float]],
     targets: dict[str, float],
+    field_coefficients: dict[str, dict[str, float]] | None = None,
+    zero_field_tolerance_t: float | None = None,
 ) -> dict[str, list[float]]:
-    """生成 PF 零场预置波形。"""
+    """生成 PF 零场预置波形。
+
+    若显式给出 targets，则按 targets 生成；否则用 PF 影响系数矩阵求解 PF3/PF4
+    的击穿点零场目标，PF1/PF2 保持小修正。
+    """
+
+    if targets:
+        target_currents = {name: float(targets.get(name, coils[name]["I0_MA"])) for name in PF_COILS}
+    else:
+        coefficients = field_coefficients or get_pf_field_coefficients({})
+        target_currents = solve_pf_null_targets(coils, coefficients, zero_field_tolerance_t)
 
     result: dict[str, list[float]] = {}
     for name in PF_COILS:
         i0 = float(coils[name]["I0_MA"])
-        target = float(targets.get(name, i0))
+        target = float(target_currents.get(name, i0))
         result[name] = _smooth_series(times, i0, target)
     return result
 
@@ -134,20 +162,58 @@ def generate_hold_waveforms(times: list[float], coils: dict[str, dict[str, float
     return result
 
 
-def estimate_zero_field_error(pf_end_state: dict[str, float]) -> float:
-    """估算击穿区零场误差。
+def estimate_zero_field_error(
+    pf_end_state: dict[str, float],
+    field_coefficients: dict[str, dict[str, float]] | None = None,
+) -> float:
+    """用 PF 场影响系数矩阵估算击穿点零场误差。"""
 
-    这是简化指标，不是真实磁场求解。权重体现 PF4/PF3 是主力，PF1/PF2 是小修正。
-    目标为 weighted_sum 接近 0。
-    """
+    coefficients = field_coefficients or get_pf_field_coefficients({})
+    br_t, bz_t = compute_breakdown_field_t(pf_end_state, coefficients)
+    return field_magnitude_t(br_t, bz_t)
 
-    weighted_sum = (
-        0.01 * pf_end_state.get("PF1", 0.0)
-        + 0.02 * pf_end_state.get("PF2", 0.0)
-        + 0.04 * pf_end_state.get("PF3", 0.0)
-        - 0.03 * pf_end_state.get("PF4", 0.0)
-    )
-    return abs(weighted_sum)
+
+def build_physics_diagnostics(
+    config: dict[str, Any],
+    times: list[float],
+    ip_profile: list[float],
+    cs_waveforms: dict[str, list[float]],
+    pf_end_state: dict[str, float],
+) -> dict[str, Any]:
+    """汇总 Breakdown 最小物理约束诊断量。"""
+
+    plasma_inductance_h = vacuum_loop_inductance_h(config["device"])
+    plasma_resistance_ohm = get_plasma_resistance_ohm(config)
+    mutual_inductance_h = get_cs_mutual_inductance_h(config)
+    field_coefficients = get_pf_field_coefficients(config)
+
+    plasma_voltage = compute_plasma_circuit_voltage(times, ip_profile, plasma_inductance_h, plasma_resistance_ohm)
+    cs_voltage = compute_cs_drive_voltage(times, cs_waveforms, mutual_inductance_h)
+    br_t, bz_t = compute_breakdown_field_t(pf_end_state, field_coefficients)
+    target_loop_voltage = float(config["constraints"]["breakdown_loop_voltage_V"])
+
+    def average(values: list[float]) -> float:
+        return sum(values) / len(values) if values else 0.0
+
+    return {
+        "model": "minimal_physics_constraints",
+        "plasma_inductance_H": plasma_inductance_h,
+        "plasma_resistance_ohm": plasma_resistance_ohm,
+        "cs_mutual_inductance_H": mutual_inductance_h,
+        "target_loop_voltage_V": target_loop_voltage,
+        "plasma_circuit_voltage_V": plasma_voltage,
+        "cs_drive_voltage_V": cs_voltage,
+        "average_plasma_circuit_voltage_V": average(plasma_voltage),
+        "average_cs_drive_voltage_V": average(cs_voltage),
+        "max_plasma_circuit_voltage_V": max(plasma_voltage) if plasma_voltage else 0.0,
+        "max_cs_drive_voltage_V": max(cs_voltage) if cs_voltage else 0.0,
+        "breakdown_field": {
+            "Br_T": br_t,
+            "Bz_T": bz_t,
+            "Bpol_T": field_magnitude_t(br_t, bz_t),
+        },
+        "pf_field_coefficients_T_per_MA": field_coefficients,
+    }
 
 
 def build_waveform_rows(

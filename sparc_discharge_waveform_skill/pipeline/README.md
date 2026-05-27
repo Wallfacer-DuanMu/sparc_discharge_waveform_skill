@@ -2,6 +2,8 @@
 
 本目录用于定义三阶段放电波形设计的总控流程。它不替代 `stages/` 中的阶段工作包，而是负责把 `Breakdown`、`Ramp-up`、`Flat-top` 串成一条连续的数据链。
 
+当前口径下，Pipeline 串联的是一条**三阶段最小真实物理约束流程**：Stage 1 关注击穿电路与零场预置，Stage 2 关注 `Ip / Lp / Rp / CS / PF` 的升流与成形，Stage 3 关注平台维持环电压、PF 保持、Div 打击点和 VS 裕度。
+
 ---
 
 ## 1. 总控目标
@@ -47,6 +49,15 @@ config/case_long_flattop.yaml
 | `constraints` | CS 伏秒、击穿电压、裕度和差分约束 |
 | `options` | 波形风格、输出格式和绘图选项 |
 
+如需使用升级后的物理口径，配置中还应包含相应 `physics` 字段，用于提供：
+
+- `cs_mutual_inductance_H`
+- `plasma_resistance` 或其等效参数
+- `internal_inductance`
+- `poloidal_beta`
+- `pf_response_matrix`
+- 必要时的 `div_response_matrix`
+
 ---
 
 ## 3. 标准数据流
@@ -84,7 +95,8 @@ config/*.yaml
 - 三阶段时间边界；
 - 目标电流和目标位形；
 - 线圈初始电流、限幅、变化率；
-- CS 伏秒预算和其他全局约束。
+- CS 伏秒预算和其他全局约束；
+- 若启用升级后的阶段口径，还包括互感、等效电阻、电感和响应矩阵参数。
 
 ### Step 2：执行全局输入检查
 
@@ -110,7 +122,8 @@ config/*.yaml
 - `target.Ip_seed_MA`；
 - `coils` 中的全局初始线圈状态；
 - `constraints.breakdown_loop_voltage_V`；
-- `constraints.cs_flux_budget_Vs`。
+- `constraints.cs_flux_budget_Vs`；
+- 击穿阶段所需的 `physics.cs_mutual_inductance_H`、`physics.plasma_resistance_ohm`、`physics.pf_field_coefficients_T_per_MA`。
 
 输出并写入 `process_state.json`：
 
@@ -132,7 +145,8 @@ Stage 2 不得重新读取 `coils.*.I0_MA` 作为初态，而必须接收：
 
 - `target.Ip_flat_MA`；
 - `target.shape`；
-- `timeline.breakdown_end_s` 到 `timeline.rampup_end_s`。
+- `timeline.breakdown_end_s` 到 `timeline.rampup_end_s`；
+- Stage 2 需要的 `physics.internal_inductance`、`physics.plasma_resistance`、`physics.poloidal_beta`、`physics.pf_response_matrix`。
 
 输出并写入 `process_state.json`：
 
@@ -157,7 +171,8 @@ Stage 3 必须接收：
 - `target.Ip_flat_MA`；
 - `target.shape`；
 - `timeline.rampup_end_s` 到 `timeline.flattop_end_s`；
-- `Div1/Div2` 和 `VS` 约束。
+- `Div1/Div2` 和 `VS` 约束；
+- Stage 3 需要的 `physics.cs_mutual_inductance_H`、`physics.plasma_resistance`、`physics.pf_response_matrix`，必要时还有 `physics.div_response_matrix`。
 
 输出并写入 `process_state.json`：
 
@@ -261,6 +276,12 @@ Agent 使用 Pipeline 时必须遵守：
 5. 必须输出验证结果和修正建议；
 6. 若某阶段不通过，应优先指出需要调整的输入参数，而不是强行给出通过结论。
 
+此外还应明确说明：
+
+- 当前是否只是走通 Pipeline 最小闭环；
+- 当前阶段结果是否来自 `stages/` 真正实现，还是来自总控层占位状态构造；
+- 文档中的物理链路是否已经完全接入代码。
+
 ---
 
 ## 9. 最小可运行闭环
@@ -278,3 +299,5 @@ Agent 使用 Pipeline 时必须遵守：
 ```
 
 这个闭环的重点是数据链路正确，而不是模型精度完整。
+
+一句话说：**Pipeline 现在要同步体现新的三阶段物理流程，但也必须如实承认当前代码接入程度。**

@@ -99,9 +99,32 @@ constraints:
   min_cs_flux_margin_fraction: 0.15
   max_pf_asymmetry_fraction: 0.10
 
+# 第一阶段最小物理约束参数。
+# 不做完整 Biot-Savart；PF 场用击穿点影响系数矩阵近似。
+physics:
+  plasma_resistance_ohm: 1.0e-5
+  loop_voltage_tolerance_fraction: 0.25
+  cs_mutual_inductance_H:
+    CS1: 1.2e-6
+    CS2: 1.5e-6
+    CS3: 1.2e-6
+  pf_field_coefficients_T_per_MA:
+    PF1:
+      Br: 0.0010
+      Bz: 0.0015
+    PF2:
+      Br: -0.0010
+      Bz: 0.0015
+    PF3:
+      Br: 0.0030
+      Bz: 0.0120
+    PF4:
+      Br: 0.0000
+      Bz: -0.0100
+
 # 简化建模选项。
 # cs_swing_share 指定击穿电压需求在三组 CS 中的分担比例。
-# pf_null_preset_target_MA 指定 Breakdown 末端 PF 预置目标电流，用于生成简化零场预置。
+# pf_null_preset_target_MA 若留空，则由 PF 场影响系数矩阵反推 PF3/PF4 零场目标。
 options:
   waveform_style: smooth_piecewise_linear
   output_format:
@@ -115,12 +138,8 @@ options:
     CS2: 0.40
     CS3: 0.30
 
-  # 这里的数值是教学用的简化工作点，不代表真实 SPARC 工程值。
-  pf_null_preset_target_MA:
-    PF1: 0.10
-    PF2: 0.15
-    PF3: -0.75
-    PF4: -1.00
+  # 留空时使用 physics.pf_field_coefficients_T_per_MA 反推零场预置。
+  pf_null_preset_target_MA: {}
 
   div_breakdown_mode: hold_initial
   vs_breakdown_mode: bias_only

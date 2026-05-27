@@ -2,16 +2,17 @@
 
 ## 1. Skill 定位
 
-本 Skill 是一个面向托卡马克放电实验前准备的离线波形设计助手。它以 SPARC 简化装置为参考边界，根据用户给定的目标放电需求，组织 `Breakdown`、`Ramp-up`、`Flat-top` 三阶段推演，生成 PF/CS 线圈电流候选波形、阶段状态、约束检查和修正建议。
+本 Skill 是一个面向托卡马克放电实验前准备的离线波形设计助手。它以 SPARC 简化装置为参考边界，根据用户给定的目标放电需求，组织 `Breakdown`、`Ramp-up`、`Flat-top` 三阶段推演，生成 PF / CS / Div / VS 线圈候选波形、阶段状态、约束检查和修正建议。
 
-本 Skill 的核心不是一次性给出工程定型波形，而是指导 Agent 按固定流程完成：
+当前版本的重点变化是：**三阶段说明已从经验型流程描述升级为“最小真实物理约束流程”**。也就是说，Agent 在使用本 Skill 时，应默认按照三阶段物理链路理解和组织工作，而不是把阶段结果看成纯插值占位： 
 
 ```text
 用户目标与约束
   → 统一输入文件
-  → Pipeline 总控
+  → Breakdown：击穿电路 + PF 零场预置
+  → Ramp-up：Ip / Lp / Rp / CS 伏秒 / PF 成形
+  → Flat-top：平台维持环电压 / PF 保持 / Div / VS 裕度
   → 三阶段状态传递
-  → 过程状态文件
   → 波形与验证报告
 ```
 
@@ -26,7 +27,7 @@ Agent 使用本 Skill 时必须遵守以下边界：
 - 不模拟 VS 快速反馈细节，只保留稳定裕度。
 - 不把 TF 作为动态优化对象，TF 仅作为固定背景环向场。
 - 输出结果是初步候选方案，不是可直接工程落地的最终波形。
-- 当前 Pipeline 已具备最小闭环能力，但阶段内部物理模型仍可继续替换和增强。
+- 当前 Pipeline 已具备最小闭环能力，三阶段文档已对接最小物理口径，但代码层仍存在占位实现与后续接入空间。
 
 ---
 
@@ -44,7 +45,7 @@ Agent 必须先理解各目录职责，再决定读哪些文件。
 | `pipeline/state_schema.md` | 固定 `process_state.json` 的字段规范 |
 | `pipeline/run_pipeline.py` | 当前最小代码闭环入口 |
 | `common/` | 公共工具层，提供读写、校验、状态构造等基础能力 |
-| `stages/` | 三个阶段的工作包，描述各阶段目标、输入、计算逻辑和验证项 |
+| `stages/` | 三个阶段的工作包，描述各阶段目标、输入、物理链路和验证项 |
 | `outputs/` | Pipeline 或阶段程序输出结果的位置 |
 
 ---
@@ -55,13 +56,14 @@ Agent 必须先理解各目录职责，再决定读哪些文件。
 
 按以下顺序阅读：
 
-1. `docs/01_project_summary.md`
-2. `docs/02_facility_and_constraints.md`
-3. `docs/03_workflows.md`
-4. `docs/04_io_and_examples.md`
+1. `README.md`
+2. `docs/01_project_summary.md`
+3. `docs/02_facility_and_constraints.md`
+4. `docs/03_workflows.md`
 5. `pipeline/README.md`
 6. `pipeline/state_schema.md`
 7. 三个阶段的 `README.md`
+8. 如需理解升级后的物理背景，再阅读根目录三个阶段物理说明文档
 
 ### 4.2 用户要求“运行完整流程”时
 
@@ -83,6 +85,12 @@ Agent 必须先理解各目录职责，再决定读哪些文件。
 - `stages/stage_2_rampup/README.md`
 - `stages/stage_3_flattop/README.md`
 
+必要时再对照：
+
+- `第一阶段物理过程.md`
+- `第二阶段物理过程.md`
+- `第三阶段物理过程.md`
+
 然后再检查 `pipeline/run_pipeline.py` 中是否需要把阶段函数接入 Pipeline。
 
 ---
@@ -94,16 +102,20 @@ Agent 必须先理解各目录职责，再决定读哪些文件。
 1. 将用户需求整理为统一 YAML 输入，优先使用 `config/input_template.yaml` 的结构。
 2. 检查输入字段是否完整，包括 `device`、`timeline`、`target`、`coils`、`constraints`、`options`。
 3. 检查时间顺序、目标电流、线圈限幅、变化率上限和 CS 伏秒预算。
-4. 使用 `pipeline/run_pipeline.py` 运行最小闭环，或按 `pipeline/README.md` 手动推演同样的数据流。
-5. 读取输出的 `process_state.json`，确认三阶段状态是否连续。
-6. 读取 `stage_summary.md`、`validation_report.md`、`revision_suggestions.md`，向用户汇报结果。
-7. 如果某阶段不通过，优先建议用户调整输入参数，而不是强行声称通过。
+4. 依据三阶段物理链路理解问题：
+   - Breakdown 看击穿环电压、CS swing 和 PF 零场预置；
+   - Ramp-up 看 `Ip(t)`、`L_p(t)`、`R_p(t)`、CS 伏秒和 PF 成形；
+   - Flat-top 看平台维持环电压、剩余伏秒、PF 保持、Div 打击点和 VS 裕度。
+5. 使用 `pipeline/run_pipeline.py` 运行最小闭环，或按 `pipeline/README.md` 手动推演同样的数据流。
+6. 读取输出的 `process_state.json`，确认三阶段状态是否连续。
+7. 读取 `stage_summary.md`、`validation_report.md`、`revision_suggestions.md`，向用户汇报结果。
+8. 如果某阶段不通过，优先建议用户调整输入参数，而不是强行声称通过。
 
 ---
 
 ## 6. Pipeline 的作用
 
-`pipeline/` 是本 Skill 的总控层。它不负责写具体物理模型细节，而负责把整个三阶段流程组织起来。
+`pipeline/` 是本 Skill 的总控层。它不负责展开所有阶段内部物理细节，而负责把整个三阶段流程组织起来。
 
 Pipeline 的职责是：
 
@@ -124,7 +136,12 @@ Pipeline 的职责是：
 - 调用 `common/state.py` 中的 `make_stage_1_result`、`make_stage_2_result`、`make_stage_3_result` 构造阶段结果；
 - 写出 `process_state.json`、`waveforms.csv`、`stage_summary.md`、`validation_report.md`、`revision_suggestions.md`。
 
-注意：当前 `make_stage_1_result`、`make_stage_2_result`、`make_stage_3_result` 是最小闭环阶段占位函数。它们保证数据链路和字段规范正确，但不等价于完整物理模型。后续可以逐步替换为 `stages/` 下的真实阶段计算函数。
+注意：当前 `make_stage_1_result`、`make_stage_2_result`、`make_stage_3_result` 仍是最小闭环阶段占位函数。它们保证数据链路和字段规范正确，但不等价于完整阶段物理实现。Agent 必须同时记住两点：
+
+1. **文档口径已经升级到最小真实物理约束流程**；
+2. **代码总控仍可能使用占位阶段结果**。
+
+因此，在说明现状时要区分“文档与设计口径”和“当前代码接入程度”。
 
 ---
 
@@ -139,8 +156,8 @@ Pipeline 的职责是：
 | `common/io.py` | 读取 YAML，写出 JSON/文本，创建输出目录 |
 | `common/validation.py` | 检查统一输入是否合法，包括时间、目标电流、线圈限幅、变化率和伏秒预算 |
 | `common/state.py` | 构造 `process_state`、阶段结果、最终结果和最小状态传递结构 |
-| `common/constraints.py` | 预留公共约束检查位置，可后续承载电流限幅、变化率、伏秒等更细检查 |
-| `common/utils.py` | 预留通用工具位置，可后续承载平滑函数、表格处理、报告辅助函数 |
+| `common/constraints.py` | 预留公共约束检查位置，可后续承载电流限幅、变化率、伏秒和残差检查 |
+| `common/utils.py` | 预留通用工具位置，可后续承载平滑函数、时间轴、响应矩阵与报告辅助函数 |
 
 Agent 不应把公共逻辑重复写进每个阶段。凡是多个阶段都会用到的能力，应优先放在 `common/`。
 
@@ -218,7 +235,7 @@ Agent 向用户汇报时，应优先说明：
 
 1. Pipeline 是否跑通；
 2. 三阶段状态是否完成传递；
-3. 是否存在失败阶段；
+3. 当前结果是占位输出还是真实阶段输出；
 4. 主要风险和下一步建议。
 
 ---
@@ -235,22 +252,28 @@ Agent 向用户汇报时，应优先说明：
 - `VS` 不生成高频反馈波形，只输出基准值和保留裕度。
 - 初版按上下对称线圈组处理，必要时再加入 PF 小差分修正。
 
+在这个统一口径下，三阶段应分别理解为：
+
+- **Breakdown**：击穿电路方程 + CS 互感 + PF 击穿零场；
+- **Ramp-up**：`I_p(t)`、`L_p(t)`、`R_p(t)`、CS 伏秒预算 + PF 响应矩阵成形；
+- **Flat-top**：平台维持环电压 + PF 保持 + Div 打击点 + VS 裕度。
+
 ---
 
 ## 12. 当前实现状态
 
 当前 Skill 已完成：
 
-- 文档层：`docs/` 和三个阶段 `README.md` 已搭建。
-- 输入层：`config/input_template.yaml` 已提供统一输入模板。
-- 总控层：`pipeline/README.md` 和 `pipeline/state_schema.md` 已定义流程和状态字段。
+- 文档层：`docs/`、`pipeline/README.md` 和三个阶段 `README.md` 已同步到新的三阶段物理工作流程；
+- 输入层：`config/input_template.yaml` 已提供统一输入模板；
+- 总控层：`pipeline/README.md` 和 `pipeline/state_schema.md` 已定义流程和状态字段；
 - 最小代码闭环：`pipeline/run_pipeline.py`、`common/io.py`、`common/validation.py`、`common/state.py` 已搭建。
 
 当前仍属于简化实现的是：
 
-- 阶段内部波形计算仍由 `common/state.py` 中的最小占位函数生成。
-- 尚未把 `stages/stage_*/generate.py` 作为真实阶段计算器接入 Pipeline。
-- `waveforms.csv` 当前只输出阶段边界点，不是完整高分辨率时间序列。
+- 阶段内部代码未必全部按最新物理说明完整接入；
+- `stages/stage_*/generate.py` 与 Pipeline 总控之间仍可能存在占位适配；
+- `waveforms.csv` 当前输出能力可能仍偏向最小闭环而非完整高分辨率物理时间序列。
 
 Agent 必须如实说明当前实现状态，不得把最小闭环说成完整物理仿真。
 
@@ -260,11 +283,11 @@ Agent 必须如实说明当前实现状态，不得把最小闭环说成完整�
 
 如果用户要求继续增强，应按以下顺序推进：
 
-1. 完善 `stages/stage_1_breakdown/generate.py`，替换 `make_stage_1_result`。
-2. 完善 `stages/stage_2_rampup/generate.py`，替换 `make_stage_2_result`。
-3. 完善 `stages/stage_3_flattop/generate.py`，替换 `make_stage_3_result`。
+1. 让 `stage_1_breakdown/generate.py` 与击穿物理链路完整对齐，并替换 `make_stage_1_result`。
+2. 让 `stage_2_rampup/generate.py` 与 `Ip/Lp/Rp/CS/PF` 物理链路完整对齐，并替换 `make_stage_2_result`。
+3. 让 `stage_3_flattop/generate.py` 与平台维持、Div、VS 裕度链路完整对齐，并替换 `make_stage_3_result`。
 4. 将完整时间序列波形写入 `waveforms.csv`。
-5. 将更细的电流限幅、变化率、伏秒和位形检查下沉到 `common/constraints.py`。
+5. 将更细的电流限幅、变化率、伏秒、PF 残差、位形与打击点检查下沉到 `common/constraints.py`。
 6. 完善报告和修正建议生成逻辑。
 
 ---

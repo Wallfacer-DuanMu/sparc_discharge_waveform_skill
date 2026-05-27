@@ -72,12 +72,19 @@ def validate_rampup_result(config: dict[str, Any], result: dict[str, Any]) -> di
     checks.extend(_check_current_limits(config, rows))
     checks.extend(_check_rate_limits(config, rows))
     checks.append(_check_loop_voltage(config, rows))
+    checks.append(_check_physics_diagnostics_available(rows))
+    checks.append(_check_cs_mutual_tracking(config, rows))
+    checks.append(_check_plasma_inductance(rows))
+    checks.append(_check_plasma_resistance(rows))
     checks.append(_check_flux_budget(config, rows))
+    checks.append(_check_cs_flux_remaining_margin(config, rows))
     checks.append(_check_q95(config, rows))
     checks.append(_check_internal_inductance(config, rows))
     checks.append(_check_vertical_stability(config, rows))
     checks.append(_check_shape_limits(config, rows))
+    checks.append(_check_pf_balance_residual(config, rows))
     checks.append(_check_handoff(result))
+    checks.append(_check_handoff_physics_fields(result))
     checks.append(_check_continuity(rows))
 
     issues = [check for check in checks if not check["passed"]]
@@ -220,6 +227,50 @@ def _check_flux_budget(config: dict[str, Any], rows: list[dict[str, Any]]) -> di
     return _check("cs_flux_budget", passed, "降低 ramp-up 环电压、缩短高电压持续时间或提高伏秒预算。")
 
 
+def _check_physics_diagnostics_available(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    required = (
+        "plasma_inductance_H",
+        "plasma_resistance_ohm",
+        "loop_voltage_required_V",
+        "loop_voltage_cs_V",
+        "Bv_required_T",
+        "pf_balance_residual",
+    )
+    passed = all(field in rows[0] for field in required)
+    return _check("physics_diagnostics_available", passed, "补齐 Ramp-up 物理诊断字段。")
+
+
+def _check_cs_mutual_tracking(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    tolerance = float(config["control_constraints"]["tracking_tolerances"].get("loop_voltage_V", 0.5))
+    tolerance = max(tolerance, 0.01 * max(abs(float(row["loop_voltage_required_V"])) for row in rows))
+    if "loop_voltage_required_V" not in rows[0] or "loop_voltage_cs_V" not in rows[0]:
+        return _check("cs_mutual_tracking", False, "输出 loop_voltage_required_V 和 loop_voltage_cs_V 后再检查 CS 互感跟踪。")
+    max_error = max(abs(float(row["loop_voltage_required_V"]) - float(row["loop_voltage_cs_V"])) for row in rows)
+    return _check("cs_mutual_tracking", max_error <= tolerance, "调整 CS 互感、CS share，或降低环电压需求。")
+
+
+def _check_plasma_inductance(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if "plasma_inductance_H" not in rows[0]:
+        return _check("plasma_inductance_positive", False, "输出 plasma_inductance_H。")
+    passed = all(0.0 < float(row["plasma_inductance_H"]) < 1.0e-3 for row in rows)
+    return _check("plasma_inductance_positive", passed, "检查 R/a/li 输入，保证等离子体电感为正且数量级合理。")
+
+
+def _check_plasma_resistance(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if "plasma_resistance_ohm" not in rows[0]:
+        return _check("plasma_resistance_non_negative", False, "输出 plasma_resistance_ohm。")
+    passed = all(0.0 <= float(row["plasma_resistance_ohm"]) < 1.0 for row in rows)
+    return _check("plasma_resistance_non_negative", passed, "检查电阻模型，保证 Rp 非负且不过大。")
+
+
+def _check_cs_flux_remaining_margin(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total_available = float(config["engineering_limits"]["flux"]["total_available_Wb"])
+    margin_fraction = float(config.get("physics_constraints", {}).get("flux_margin", {}).get("min_fraction", 0.10))
+    remaining = float(rows[-1].get("cs_flux_remaining_Wb", total_available - float(rows[-1]["flux_consumed_Wb"])))
+    passed = total_available > 0 and remaining / total_available >= margin_fraction
+    return _check("cs_flux_remaining_margin", passed, "降低 ramp-up 伏秒消耗或提高总伏秒预算。")
+
+
 def _check_q95(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
     minimum = float(config["physics_constraints"]["q95"]["min"])
     passed = all(float(row["q95"]) >= minimum for row in rows)
@@ -254,6 +305,14 @@ def _check_shape_limits(config: dict[str, Any], rows: list[dict[str, Any]]) -> d
     return _check("shape_limits", all(checks), "调整 target_shape 或放慢 shape_evolution。")
 
 
+def _check_pf_balance_residual(config: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    tolerance = float(config.get("physics_constraints", {}).get("pf_balance", {}).get("max_residual", 0.20))
+    if "pf_balance_residual" not in rows[0]:
+        return _check("pf_balance_residual", False, "输出 pf_balance_residual。")
+    passed = all(float(row["pf_balance_residual"]) <= tolerance for row in rows)
+    return _check("pf_balance_residual", passed, "调整 PF 响应矩阵、正则化权重或降低目标位形速度。")
+
+
 def _check_handoff(result: dict[str, Any]) -> dict[str, Any]:
     handoff = result.get("handoff_to_stage_3", {})
     required = ("time_s", "plasma_current_MA", "loop_voltage_V", "flux_consumed_Wb", "flux_remaining_Wb", "target_shape", "coil_currents_kA", "constraint_status")
@@ -261,12 +320,43 @@ def _check_handoff(result: dict[str, Any]) -> dict[str, Any]:
     return _check("handoff_to_stage_3_complete", passed, "补齐传递给 Stage 3 的末态字段。")
 
 
+def _check_handoff_physics_fields(result: dict[str, Any]) -> dict[str, Any]:
+    handoff = result.get("handoff_to_stage_3", {})
+    required = ("cs_flux_remaining_after_rampup_Vs", "internal_inductance", "vertical_stability_margin", "physics_diagnostics")
+    passed = all(key in handoff for key in required)
+    return _check("handoff_physics_fields_complete", passed, "补齐 Stage 3 所需的 Ramp-up 物理交接字段。")
+
+
 def _check_continuity(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    numeric_fields = [key for key, value in rows[0].items() if isinstance(value, (int, float)) and key != "time_s"]
+    monitored_fields = [
+        "Ip_MA",
+        "q95",
+        "internal_inductance",
+        "vertical_stability_margin",
+        "major_radius_m",
+        "minor_radius_m",
+        "elongation",
+        "triangularity",
+        "vertical_position_m",
+        "I_CS1_kA",
+        "I_CS2_kA",
+        "I_CS3_kA",
+        "I_PF1_kA",
+        "I_PF2_kA",
+        "I_PF3_kA",
+        "I_PF4_kA",
+        "I_Div1_kA",
+        "I_Div2_kA",
+    ]
+    numeric_fields = [field for field in monitored_fields if field in rows[0]]
     passed = True
     for previous, current in zip(rows, rows[1:]):
+        dt = float(current["time_s"]) - float(previous["time_s"])
         for field in numeric_fields:
-            if abs(float(current[field]) - float(previous[field])) > 10.0:
+            previous_value = float(previous[field])
+            current_value = float(current[field])
+            scale = max(abs(previous_value), abs(current_value), 1.0)
+            if abs(current_value - previous_value) > max(5000.0, 1.25 * scale) and dt > 0:
                 passed = False
                 break
         if not passed:

@@ -22,24 +22,29 @@ try:
         ALL_COILS,
         build_vs_reserved_range,
         build_waveform_rows,
+        compute_plasma_inductance_profile,
+        compute_poloidal_beta_profile,
+        compute_required_vertical_field,
         estimate_flux_consumption,
         estimate_flux_margin_fraction,
-        estimate_internal_inductance_profile,
-        estimate_q95_profile,
+        estimate_q95_profile_from_geometry,
         estimate_vertical_stability_margin,
         extract_divertor_state,
         extract_end_state,
         extract_shape_state,
-        generate_cs_waveforms,
-        generate_div_waveforms,
+        generate_cs_waveforms_from_mutual_inductance,
+        generate_div_waveforms_from_response_matrix,
+        generate_internal_inductance_profile,
         generate_ip_hold_profile,
-        generate_loop_voltage_profile,
-        generate_pf_waveforms,
+        generate_plasma_resistance_profile,
+        generate_pf_waveforms_from_response_matrix,
         generate_shape_hold_profile,
         generate_strike_point_profile,
+        generate_temperature_profile,
         generate_vs_bias,
         generate_x_point_profile,
         make_time_axis,
+        split_loop_voltage_terms,
     )
     from .validation import validate_config, validate_flattop_result
 except ImportError:  # 允许直接 python generate.py 运行
@@ -47,24 +52,29 @@ except ImportError:  # 允许直接 python generate.py 运行
         ALL_COILS,
         build_vs_reserved_range,
         build_waveform_rows,
+        compute_plasma_inductance_profile,
+        compute_poloidal_beta_profile,
+        compute_required_vertical_field,
         estimate_flux_consumption,
         estimate_flux_margin_fraction,
-        estimate_internal_inductance_profile,
-        estimate_q95_profile,
+        estimate_q95_profile_from_geometry,
         estimate_vertical_stability_margin,
         extract_divertor_state,
         extract_end_state,
         extract_shape_state,
-        generate_cs_waveforms,
-        generate_div_waveforms,
+        generate_cs_waveforms_from_mutual_inductance,
+        generate_div_waveforms_from_response_matrix,
+        generate_internal_inductance_profile,
         generate_ip_hold_profile,
-        generate_loop_voltage_profile,
-        generate_pf_waveforms,
+        generate_plasma_resistance_profile,
+        generate_pf_waveforms_from_response_matrix,
         generate_shape_hold_profile,
         generate_strike_point_profile,
+        generate_temperature_profile,
         generate_vs_bias,
         generate_x_point_profile,
         make_time_axis,
+        split_loop_voltage_terms,
     )
     from validation import validate_config, validate_flattop_result  # type: ignore
 
@@ -93,7 +103,7 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
     targets = config["targets"]
     strategy = config["waveform_strategy"]
     limits = config["engineering_limits"]
-    physics = config["physics_constraints"]
+    physics = config.get("physics", {})
 
     t_start = float(handoff["time_s"])
     t_end = float(targets["end_time_s"])
@@ -107,9 +117,6 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
         max_deviation_ma=float(targets["allowed_current_deviation_MA"]),
         smoothing_time_s=float(strategy["plasma_current_hold"].get("smoothing_time_s", 0.20)),
     )
-    loop_voltage = generate_loop_voltage_profile(times, strategy["loop_voltage_profile"])
-    flux_consumed = estimate_flux_consumption(times, loop_voltage, float(limits["flux"]["already_consumed_Wb"]))
-    flux_margin_fraction = estimate_flux_margin_fraction(flux_consumed, float(limits["flux"]["total_available_Wb"]))
 
     start_shape = _initial_shape_from_handoff(handoff)
     shape_tolerance = float(config["control_constraints"]["tracking_tolerances"].get("shape_dimension_m", 0.01))
@@ -120,21 +127,55 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
         float(targets["target_shape"].get("x_point", {}).get("tolerance_m", 0.03)),
     )
     strike_point_profile = generate_strike_point_profile(times, targets["divertor_targets"])
-    q95_profile = estimate_q95_profile(times, float(handoff["q95"]), float(targets["target_q95"]))
-    internal_inductance = estimate_internal_inductance_profile(times)
-    vertical_margin = estimate_vertical_stability_margin(shape_profile)
+
+    te_profile = generate_temperature_profile(times, physics)
+    rp_profile = generate_plasma_resistance_profile(times, physics, te_profile)
+    internal_inductance = generate_internal_inductance_profile(times, physics)
+    lp_profile = compute_plasma_inductance_profile(shape_profile, internal_inductance)
+    loop_terms = split_loop_voltage_terms(times, ip_profile, lp_profile, rp_profile)
+    loop_voltage = loop_terms["required"]
+    flux_consumed = estimate_flux_consumption(times, loop_voltage, float(limits["flux"]["already_consumed_Wb"]))
+    stage_3_flux_used = [value - float(limits["flux"]["already_consumed_Wb"]) for value in flux_consumed]
+    flux_margin_fraction = estimate_flux_margin_fraction(flux_consumed, float(limits["flux"]["total_available_Wb"]))
+
+    beta_p_profile = compute_poloidal_beta_profile(times, physics)
+    bv_required = compute_required_vertical_field(ip_profile, shape_profile, internal_inductance, beta_p_profile)
+    q95_profile = estimate_q95_profile_from_geometry(
+        ip_profile,
+        shape_profile,
+        float(physics.get("device", {}).get("B0_T", config.get("device", {}).get("B0_T", 12.2))),
+        float(targets["target_q95"]),
+    )
+    vertical_margin = estimate_vertical_stability_margin(shape_profile, x_point_profile, targets["target_shape"])
 
     initial_currents = _initial_currents_from_handoff(handoff)
-    cs_waveforms = generate_cs_waveforms(times, initial_currents, loop_voltage, strategy["cs_maintenance"].get("distribute_to_coils"))
-    pf_waveforms = generate_pf_waveforms(
+    cs_result = generate_cs_waveforms_from_mutual_inductance(
+        times,
+        initial_currents,
+        loop_voltage,
+        physics.get("cs_mutual_inductance_H"),
+        physics.get("cs_swing_share", strategy["cs_maintenance"].get("distribute_to_coils")),
+    )
+    cs_waveforms = cs_result["waveforms"]
+    pf_result = generate_pf_waveforms_from_response_matrix(
         times,
         initial_currents,
         targets["target_shape"],
         shape_profile,
-        strategy["pf_shape_hold"].get("correction_gain", {}),
-        float(strategy["pf_shape_hold"].get("allowed_relative_adjustment", 0.05)),
+        bv_required,
+        physics,
     )
-    div_waveforms = generate_div_waveforms(times, initial_currents, strategy["divertor_control"])
+    pf_waveforms = pf_result["waveforms"]
+    div_result = generate_div_waveforms_from_response_matrix(
+        times,
+        initial_currents,
+        strike_point_profile,
+        targets["divertor_targets"],
+        strategy["divertor_control"],
+        physics,
+    )
+    div_waveforms = div_result["waveforms"]
+    x_point_residual = _x_point_residuals(x_point_profile, targets["target_shape"])
     vs_baseline = float(strategy["vs_reserve"].get("baseline_current_kA", initial_currents.get("VS", 0.0)))
     vs_bias = generate_vs_bias(times, vs_baseline)
     vs_reserved_range = build_vs_reserved_range(
@@ -144,6 +185,22 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
     )
 
     total_available_flux = float(limits["flux"]["total_available_Wb"])
+    diagnostics = {
+        "loop_voltage_required_V": loop_voltage,
+        "loop_voltage_cs_V": cs_result["loop_voltage_cs_V"],
+        "loop_voltage_inductive_V": loop_terms["inductive"],
+        "loop_voltage_resistive_V": loop_terms["resistive"],
+        "plasma_inductance_H": lp_profile,
+        "plasma_resistance_ohm": rp_profile,
+        "electron_temperature_eV": te_profile,
+        "stage_3_flux_used_Wb": stage_3_flux_used,
+        "poloidal_beta": beta_p_profile,
+        "Bv_required_T": bv_required,
+        "pf_balance_residual": pf_result["pf_balance_residual"],
+        "x_point_residual": x_point_residual,
+        "strike_point_residual": div_result["strike_point_residual"],
+        "vs_reserved_fraction": [float(strategy["vs_reserve"].get("reserve_fraction_of_limit", 0.70)) for _ in times],
+    }
     rows = build_waveform_rows(
         times=times,
         ip_profile=ip_profile,
@@ -161,6 +218,7 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
         div_waveforms=div_waveforms,
         vs_bias=vs_bias,
         total_available_flux_wb=total_available_flux,
+        diagnostics=diagnostics,
     )
 
     end_state = extract_end_state(rows)
@@ -179,10 +237,16 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
             "end_time_s": t_end,
             "target_plasma_current_MA": float(targets["target_plasma_current_MA"]),
             "mean_plasma_current_MA": sum(float(row["Ip_MA"]) for row in rows) / len(rows),
+            "max_loop_voltage_required_V": max(loop_voltage),
+            "mean_loop_voltage_required_V": sum(loop_voltage) / len(loop_voltage),
             "stage_3_flux_consumed_Wb": final_flux_consumed - float(limits["flux"]["already_consumed_Wb"]),
             "total_flux_consumed_Wb": final_flux_consumed,
             "flux_remaining_Wb": final_flux_remaining,
             "flux_margin_fraction": final_flux_margin_fraction,
+            "min_q95": min(q95_profile),
+            "min_vertical_stability_margin": min(vertical_margin),
+            "max_pf_balance_residual": max(pf_result["pf_balance_residual"]),
+            "max_strike_point_residual": max(div_result["strike_point_residual"]),
         },
         "coil_state_at_flattop_end": {name: end_state[name] for name in ALL_COILS},
         "shape_state_at_flattop_end": shape_state,
@@ -198,10 +262,23 @@ def generate_flattop(config: dict[str, Any]) -> dict[str, Any]:
             "flux_remaining_Wb": final_flux_remaining,
             "flux_margin_fraction": final_flux_margin_fraction,
             "q95": float(rows[-1]["q95"]),
+            "internal_inductance": float(rows[-1]["internal_inductance"]),
+            "vertical_stability_margin": float(rows[-1]["vertical_stability_margin"]),
             "shape": shape_state,
             "divertor_setting": divertor_state,
             "vs_reserved_range_kA": vs_reserved_range,
             "coil_currents_kA": {name: end_state[name] for name in ALL_COILS},
+            "physics_diagnostics": {
+                "model": "minimum_physics_flattop_hold",
+                "plasma_inductance_H": float(rows[-1]["plasma_inductance_H"]),
+                "plasma_resistance_ohm": float(rows[-1]["plasma_resistance_ohm"]),
+                "loop_voltage_required_V": float(rows[-1]["loop_voltage_required_V"]),
+                "loop_voltage_cs_V": float(rows[-1]["loop_voltage_cs_V"]),
+                "Bv_required_T": float(rows[-1]["Bv_required_T"]),
+                "pf_balance_residual": float(rows[-1]["pf_balance_residual"]),
+                "strike_point_residual": float(rows[-1]["strike_point_residual"]),
+                "effective_cs_mutual_inductance_H": float(cs_result["effective_mutual_inductance_H"]),
+            },
             "constraint_status": "pending_validation",
         },
     }
@@ -276,6 +353,16 @@ def _initial_shape_from_handoff(handoff: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def _x_point_residuals(x_point_profile: dict[str, list[float]], target_shape: dict[str, Any]) -> list[float]:
+    lower = target_shape.get("x_point", {}).get("lower_x_point", {})
+    r_target = float(lower.get("R_m", 1.55))
+    z_target = float(lower.get("Z_m", -1.05))
+    return [
+        ((r - r_target) ** 2 + (z - z_target) ** 2) ** 0.5
+        for r, z in zip(x_point_profile["lower_x_point_R_m"], x_point_profile["lower_x_point_Z_m"])
+    ]
+
+
 def _build_revision_suggestions(validation: dict[str, Any]) -> list[str]:
     suggestions: list[str] = []
     for check in validation["checks"]:
@@ -283,7 +370,7 @@ def _build_revision_suggestions(validation: dict[str, Any]) -> list[str]:
         if not check["passed"] and suggestion and suggestion not in suggestions:
             suggestions.append(suggestion)
     if not suggestions:
-        suggestions.append("当前 Flat-top 候选方案已通过简化验证，可继续与前三阶段结果拼接。")
+        suggestions.append("当前 Flat-top 最小物理维持模型已通过简化验证，可继续与前三阶段结果拼接。")
     return suggestions
 
 

@@ -21,6 +21,7 @@ try:
     from .models import (
         ALL_COILS,
         PF_COILS,
+        build_physics_diagnostics,
         build_waveform_rows,
         estimate_cs_flux_used,
         estimate_zero_field_error,
@@ -29,6 +30,8 @@ try:
         generate_hold_waveforms,
         generate_ip_seed_profile,
         generate_pf_null_preset,
+        get_cs_mutual_inductance_h,
+        get_pf_field_coefficients,
         make_time_axis,
     )
     from .validation import validate_breakdown_result, validate_config
@@ -36,6 +39,7 @@ except ImportError:  # 允许直接 python generate.py 运行
     from models import (  # type: ignore
         ALL_COILS,
         PF_COILS,
+        build_physics_diagnostics,
         build_waveform_rows,
         estimate_cs_flux_used,
         estimate_zero_field_error,
@@ -44,6 +48,8 @@ except ImportError:  # 允许直接 python generate.py 运行
         generate_hold_waveforms,
         generate_ip_seed_profile,
         generate_pf_null_preset,
+        get_cs_mutual_inductance_h,
+        get_pf_field_coefficients,
         make_time_axis,
     )
     from validation import validate_breakdown_result, validate_config  # type: ignore
@@ -83,17 +89,22 @@ def generate_breakdown(config: dict[str, Any]) -> dict[str, Any]:
     times = make_time_axis(t_start, t_end, dt)
     ip_profile = generate_ip_seed_profile(times, float(target["Ip_seed_MA"]))
     cs_flux_used = estimate_cs_flux_used(loop_voltage_v, t_start, t_end)
+    cs_mutual_inductance = get_cs_mutual_inductance_h(config)
+    pf_field_coefficients = get_pf_field_coefficients(config)
 
     cs_waveforms = generate_cs_swing(
         times=times,
         coils=coils,
         share=options.get("cs_swing_share", {"CS1": 0.30, "CS2": 0.40, "CS3": 0.30}),
         loop_voltage_v=loop_voltage_v,
+        mutual_inductance_h=cs_mutual_inductance,
     )
     pf_waveforms = generate_pf_null_preset(
         times=times,
         coils=coils,
         targets=options.get("pf_null_preset_target_MA", {}),
+        field_coefficients=pf_field_coefficients,
+        zero_field_tolerance_t=float(constraints["breakdown_zero_field_tolerance_T"]),
     )
     aux_waveforms = generate_hold_waveforms(times, coils)
 
@@ -108,9 +119,10 @@ def generate_breakdown(config: dict[str, Any]) -> dict[str, Any]:
 
     end_state = extract_end_state(rows)
     pf_end_state = {name: end_state[name] for name in PF_COILS}
-    zero_field_error = estimate_zero_field_error(pf_end_state)
+    zero_field_error = estimate_zero_field_error(pf_end_state, pf_field_coefficients)
+    physics_diagnostics = build_physics_diagnostics(config, times, ip_profile, cs_waveforms, pf_end_state)
     cs_budget = float(constraints["cs_flux_budget_Vs"])
-    validation = validate_breakdown_result(config, rows, cs_flux_used, zero_field_error)
+    validation = validate_breakdown_result(config, rows, cs_flux_used, zero_field_error, physics_diagnostics)
 
     return {
         "case_name": config["case_name"],
@@ -121,6 +133,7 @@ def generate_breakdown(config: dict[str, Any]) -> dict[str, Any]:
         "cs_flux_used_breakdown_Vs": cs_flux_used,
         "cs_flux_remaining_after_breakdown_Vs": cs_budget - cs_flux_used,
         "zero_field_error_T": zero_field_error,
+        "physics_diagnostics": physics_diagnostics,
         "breakdown_validation": validation,
     }
 
@@ -172,14 +185,21 @@ def _build_summary(result: dict[str, Any]) -> str:
     end_state_lines = "\n".join(
         f"- `{name}`: {value:.4f} MA" for name, value in result["coil_state_at_breakdown_end"].items()
     )
+    diagnostics = result.get("physics_diagnostics", {})
+    field = diagnostics.get("breakdown_field", {})
     return f"""# Breakdown 阶段摘要
 
 - 案例：`{result['case_name']}`
 - 阶段：`breakdown`
+- 模型：`{diagnostics.get('model', 'not_reported')}`
 - 击穿末端 Ip：`{result['Ip_at_breakdown_end_MA']:.4f} MA`
 - CS 已用伏秒：`{result['cs_flux_used_breakdown_Vs']:.4f} Vs`
 - CS 剩余伏秒：`{result['cs_flux_remaining_after_breakdown_Vs']:.4f} Vs`
 - 零场误差估计：`{result['zero_field_error_T']:.6f} T`
+- 平均 CS 驱动电压：`{diagnostics.get('average_cs_drive_voltage_V', 0.0):.4f} V`
+- 平均等离子体电路需求电压：`{diagnostics.get('average_plasma_circuit_voltage_V', 0.0):.4f} V`
+- 击穿点 Br：`{field.get('Br_T', 0.0):.6f} T`
+- 击穿点 Bz：`{field.get('Bz_T', 0.0):.6f} T`
 - 验证是否通过：`{result['breakdown_validation']['passed']}`
 
 ## 击穿末态线圈电流

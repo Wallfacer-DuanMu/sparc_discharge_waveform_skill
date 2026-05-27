@@ -28,3 +28,7 @@
 - `zero_field_quality`: PASS
 - `seed_current`: PASS
 - `waveform_continuity`: PASS
+- `cs_loop_voltage_tracking`: PASS
+- `plasma_circuit_voltage_reasonable`: PASS
+- `breakdown_Br_component`: PASS
+- `breakdown_Bz_component`: PASS

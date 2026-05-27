@@ -2,6 +2,8 @@
 
 本工作包用于生成 SPARC 放电波形规划中的第三阶段：Flat-top。该阶段从第二阶段 Ramp-up 的末端状态出发，在目标平台电流附近维持等离子体电流、边界形状、X 点和偏滤器构型，并检查 CS 剩余伏秒、PF 平衡裕度、Div 打击点调节能力和 VS 稳定裕度。
 
+当前版本的关键变化是：Flat-top 已从“经验维持策略说明”升级为**最小真实物理维持模型说明**。它的核心不是再做一段平滑收尾，而是明确说明平台电流维持、低环电压需求、PF 工作点保持、Div 打击点和 VS 裕度如何共同组成 Stage 3。
+
 ## 1. 阶段定位
 
 Flat-top 是三阶段离线波形设计的维持与验收阶段。它不是重新从零寻找一套大幅变化的线圈波形，而是在 Ramp-up 已经完成升流和成形的基础上，继续生成一段平稳、可评审、可与前两阶段拼接的候选波形。
@@ -49,7 +51,6 @@ Flat-top 是三阶段离线波形设计的维持与验收阶段。它不是重�
 - `end_time_s`：Flat-top 结束时间
 - `target_plasma_current_MA`：目标平台等离子体电流
 - `allowed_current_deviation_MA`：平台电流允许偏差
-- `target_loop_voltage_V`：维持电流所需的目标环电压
 - `target_q95`：目标边界安全因子
 - `target_shape`：目标平顶位形
 - `divertor_targets`：偏滤器 X 点和打击点目标
@@ -61,8 +62,6 @@ Flat-top 是三阶段离线波形设计的维持与验收阶段。它不是重�
 
 - `time_grid`：本阶段时间网格
 - `plasma_current_hold`：平台电流保持策略
-- `loop_voltage_profile`：低环电压维持策略
-- `cs_maintenance`：CS 慢速摆动和伏秒消耗策略
 - `pf_shape_hold`：PF 形状保持和小幅修正策略
 - `divertor_control`：Div 固定设定或打击点扫描策略
 - `vs_reserve`：VS 基准值和裕度输出策略
@@ -89,6 +88,20 @@ Flat-top 是三阶段离线波形设计的维持与验收阶段。它不是重�
 - 垂直稳定裕度与 VS 预留比例
 - 电流、形状、线圈和打击点跟踪容忍度
 
+### 2.7 物理参数
+
+本阶段建议显式提供 `physics` 小节，至少包括：
+
+- `cs_mutual_inductance_H`
+- `cs_swing_share`
+- `plasma_resistance`
+- `internal_inductance`
+- `poloidal_beta`
+- `pf_response_matrix`
+- 必要时的 `div_response_matrix`
+- `pf_shape_gains`
+- `solver.weights`、`solver.pf_regularization`、`solver.div_regularization`
+
 ## 3. 处理流程
 
 建议实现流程如下：
@@ -96,14 +109,20 @@ Flat-top 是三阶段离线波形设计的维持与验收阶段。它不是重�
 1. 读取并验证 YAML 配置。
 2. 检查 `handoff_from_stage_2` 是否完整，确认起始时间、电流、位形和线圈状态可用。
 3. 根据 `targets` 和 `waveform_strategy.time_grid` 构建 Flat-top 时间网格。
-4. 生成近似恒定的 `Ip(t)` 平台轨迹，并检查是否落在允许偏差内。
-5. 生成低环电压 `loop_voltage(t)`，累计本阶段 CS 伏秒消耗。
-6. 让 `CS1/CS2/CS3` 从 Ramp-up 末态开始慢速变化，维持目标电流并保留伏秒裕度。
-7. 让 `PF1/PF2/PF3/PF4` 保持在平顶工作点附近，按目标形状、X 点和主半径做小幅慢调。
-8. 让 `Div1/Div2` 给出固定工作点或小幅扫描，用于偏滤器打击点微调。
-9. 输出 `VS` 基准电流和可用控制范围，不生成高频反馈细节。
-10. 检查工程限制、物理约束和控制裕度。
-11. 输出结构化结果，供三阶段总波形拼接和最终报告使用。
+4. 生成近似恒定的 `Ip(t)` 平台轨迹，必要时允许一小段从入口值收敛到平台目标。
+5. 计算 `li(t)`、`L_p(t)`、`R_p(t)` 和 `q95(t)`。
+6. 用等离子体电路方程计算平台维持所需低环电压：
+
+$$
+V_{loop,req}(t)=\frac{d}{dt}\left[L_p(t)I_p(t)\right]+R_p(t)I_p(t)
+$$
+
+7. 用 CS 互感方程反推 `CS1/CS2/CS3` 的慢速维持波形，并累计本阶段伏秒消耗。
+8. 用 Shafranov 型垂直场需求和 PF 响应矩阵维持 `PF1-4` 平顶工作点。
+9. 用 Div 固定设定或小幅扫描维持打击点工作点。
+10. 输出 `VS` 基准电流和可用控制范围，不生成高频反馈细节。
+11. 检查工程限制、物理约束和控制裕度。
+12. 输出结构化结果，供三阶段总波形拼接和最终报告使用。
 
 ## 4. 输出
 
@@ -149,6 +168,22 @@ final_state:
   vs_reserved_range_kA: {}
 ```
 
+建议在当前字段基础上补充：
+
+- `plasma_inductance_H`
+- `plasma_resistance_ohm`
+- `loop_voltage_required_V`
+- `loop_voltage_cs_V`
+- `loop_voltage_inductive_V`
+- `loop_voltage_resistive_V`
+- `stage_3_flux_used_Wb`
+- `flux_remaining_Wb`
+- `poloidal_beta`
+- `pf_balance_residual`
+- `x_point_residual`
+- `strike_point_residual`
+- `vs_reserved_fraction`
+
 ## 5. 验证项
 
 至少应验证以下内容：
@@ -158,7 +193,7 @@ final_state:
 - 起始线圈电流、目标形状和剩余伏秒字段完整。
 - Flat-top 结束时间大于起始时间。
 - `Ip(t)` 保持在目标平台电流容忍范围内。
-- 环电压处于低维持区间，且不超过电源限制。
+- 输出 `loop_voltage_required_V` 且数量级合理。
 - 平顶阶段 CS 伏秒消耗不超过预算。
 - 阶段结束时剩余伏秒比例不低于 `min_flux_margin_fraction`。
 - 各线圈电流不超过上下限。
@@ -206,17 +241,40 @@ Flat-top 是三阶段链路的最后一个工作包，应向最终汇总传递�
 - `validation.py`：输入与输出校验逻辑
 - `generate.py`：波形生成入口
 
-当前 README 主要定义 Stage 3 的输入输出结构和实现边界，后续代码应优先保持与 `example.yaml` 的字段一致。
+当前 README 的职责，是把 Stage 3 说明成一条清楚的物理维持链路：**输入平台保持目标，计算低环电压需求，反推 CS 慢变，保持 PF 工作点，控制 Div 打击点，并用剩余伏秒与稳定裕度判定平台是否可维持。**
 
-## 8. 简化建模口径
+## 8. 最小物理维持模型
+
+升级后的 Stage 3 不再把环电压和线圈微调写成纯经验插值，而采用一条最小但可解释的物理链路：
+
+```text
+Ip_hold(t), shape_hold(t)
+  → Lp(t), Rp(t), li(t)
+  → V_loop_required = d(Lp Ip)/dt + Rp Ip
+  → CS mutual-inductance maintenance
+  → flux budget and final margin
+
+Ip_hold(t), shape_hold(t), li(t), beta_p(t)
+  → Bv_required(t)
+  → PF response-matrix hold
+  → PF residual / X-point residual
+
+strike-point target / sweep
+  → Div equivalent response
+  → strike-point residual
+```
+
+仍需强调：这里不是完整 SPARC 工程控制仿真，只是学生作业级低阶模型。`physics.pf_response_matrix` 和 `physics.div_response_matrix` 都是等效响应矩阵，用来把“目标物理量 → 线圈小修正”的关系表达清楚。
+
+## 9. 简化建模口径
 
 本阶段采用如下简化口径：
 
 - `TF` 继续作为固定背景环向场，不生成动态波形。
-- `CS` 只做慢速维持变化，重点检查剩余伏秒和平顶持续时间。
-- `PF1/PF2` 主要维持边界、拉长比和三角形变。
-- `PF3/PF4` 主要维持整体平衡、主半径、X 点和偏滤器入口位形。
-- `Div1/Div2` 用于平顶打击点细调，可固定工作点或小幅扫描。
-- `VS` 只输出基准值和允许控制范围，不做实时反馈求解。
+- `CS` 由互感方程反推慢速维持电流，重点检查剩余伏秒和平顶持续时间。
+- `PF1/PF2/PF3/PF4` 通过带正则项的响应矩阵保持平台位形，不做自由边界平衡求解。
+- `Div1/Div2` 用等效响应维持或扫描打击点，不参与主升流。
+- `q95` 由几何、电流和背景场估算，不再只是从入口值插值。
+- `VS` 只输出基准值、允许控制范围和稳定裕度，不做实时反馈求解。
 
 一句话概括：Flat-top 阶段的核心不是“大幅再成形”，而是“接住 Ramp-up 的末态，稳定维持目标平台，并证明仍有伏秒、形状和控制裕度”。

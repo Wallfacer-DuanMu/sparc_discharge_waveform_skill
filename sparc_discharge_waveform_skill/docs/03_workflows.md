@@ -1,6 +1,8 @@
 # 03 三阶段工作流
 
-本文件描述 Breakdown、Ramp-up 与 Flat-top 三阶段的数据流转和阶段逻辑。它与 `04_io_and_examples.md` 配合使用：`04` 定义输入输出格式，本文件说明这些输入如何被逐阶段传导，最终生成完整的线圈电流波形和检查报告。
+本文件描述 Breakdown、Ramp-up 与 Flat-top 三阶段的数据流转和阶段逻辑。它与 `04_io_and_examples.md` 配合使用：`04` 定义输入输出格式，本文件说明这些输入如何逐阶段传导，最终生成完整的线圈电流波形和检查报告。
+
+当前版本的关键口径是：**三阶段工作流已同步到“最小真实物理约束流程”**。也就是说，这里不再把三个阶段理解为纯经验插值，而是理解为三条连续、可检查的物理链路。
 
 ---
 
@@ -12,11 +14,11 @@
 config.yaml
   → 读取 SPARC 简化装置、目标 Ip、目标位形、线圈约束
   → Stage 1: Breakdown
-      生成 CS 击穿 swing 与 PF3/PF4 零场预置
+      击穿电路 + CS swing + PF 击穿零场预置
   → Stage 2: Ramp-up
-      从击穿末态继续，生成 Ip 爬升与 PF 成形波形
+      Ip / Lp / Rp / CS 伏秒 / PF 成形
   → Stage 3: Flat-top
-      从爬升末态继续，生成平顶维持、Div 微调与裕度检查
+      平台维持环电压 / PF 保持 / Div 微调 / VS 裕度
   → 输出 waveforms.csv、stage_summary.md、validation_report.md
 ```
 
@@ -24,8 +26,8 @@ config.yaml
 
 | 交接点 | 上一阶段输出 | 下一阶段输入 |
 |---|---|---|
-| `t = breakdown_end` | `Ip_seed`、CS 末态、PF 零场预置末态 | Ramp-up 初始 `Ip` 和线圈初值 |
-| `t = rampup_end` | `Ip_flat`、CS 剩余伏秒、PF 平顶工作点、Div 过渡值 | Flat-top 初始工作点 |
+| `t = breakdown_end` | `Ip_seed`、CS 末态、PF 零场预置末态、击穿伏秒消耗 | Ramp-up 初始 `Ip`、线圈初值和剩余伏秒 |
+| `t = rampup_end` | `Ip_flat`、CS 剩余伏秒、PF 平顶工作点、Div 过渡值、位形末态 | Flat-top 初始工作点 |
 | `t = flattop_end` | 完整波形、剩余裕度、风险提示 | 作为下一轮修正依据 |
 
 ---
@@ -44,7 +46,7 @@ config.yaml
 | `cs_flux_state` | CS 已用伏秒、剩余伏秒、裕度 | 判断能否完成爬升和平顶 |
 | `validation` | 各阶段检查结果 | 决定是否需要修正 |
 
-其中 `coil_state` 是阶段传递的关键。每一阶段都从上一阶段末态开始，而不是重新假定线圈初值。
+其中 `coil_state` 和 `cs_flux_state` 是阶段传递的关键。每一阶段都从上一阶段末态开始，而不是重新假定线圈初值。
 
 ---
 
@@ -52,7 +54,7 @@ config.yaml
 
 ### 3.1 阶段目标
 
-Breakdown 阶段解决的问题是：在固定 TF 背景场下，利用 CS 产生足够 loop voltage，并用 PF3/PF4 在击穿区附近建立低极向场区域，使气体形成初始等离子体和种子电流。
+Breakdown 阶段解决的问题是：在固定 TF 背景场下，利用 CS 产生足够环电压，并用 PF3/PF4 在击穿区附近建立低极向场区域，使气体形成初始等离子体和种子电流。
 
 本阶段不追求最终位形，只要求初始等离子体能够形成并被捕获。
 
@@ -64,6 +66,9 @@ Breakdown 阶段解决的问题是：在固定 TF 背景场下，利用 CS 产�
 - `timeline.t_start_s` 与 `timeline.breakdown_end_s`；
 - `target.Ip_seed_MA`；
 - `constraints.breakdown_loop_voltage_V`；
+- `physics.cs_mutual_inductance_H`：CS 到环电压的等效互感常数；
+- `physics.plasma_resistance_ohm`：击穿阶段极简等效电阻；
+- `physics.pf_field_coefficients_T_per_MA`：PF 对击穿点 `Br/Bz` 的影响系数；
 - `coils.CS1/CS2/CS3` 的初始预充磁电流、限幅和变化率；
 - `coils.PF3/PF4` 的击穿零场预置能力；
 - `coils.PF1/PF2` 的小修正能力。
@@ -73,23 +78,24 @@ Breakdown 阶段解决的问题是：在固定 TF 背景场下，利用 CS 产�
 Breakdown 可按下面顺序执行：
 
 1. **建立时间片**：生成 `t_start` 到 `breakdown_end` 的短时间轴。
-2. **CS 击穿 swing**：根据目标击穿 loop voltage，估算 CS 需要的电流变化率，并分配到 `CS1/CS2/CS3`。
-3. **PF 零场预置**：优先调整 `PF3/PF4`，使击穿区附近的 `B_R/B_Z` 趋于低值。
-4. **PF 局部修正**：用 `PF1/PF2` 做小幅修正，避免初始磁场结构过差。
-5. **生成种子电流**：把 `Ip` 从 0 平滑过渡到 `Ip_seed`，表示初始等离子体形成。
-6. **检查约束**：检查 CS 电流、变化率、已用伏秒、PF 零场质量和波形连续性。
+2. **生成种子电流**：把 `Ip` 从 0 平滑过渡到 `Ip_seed`，表示初始等离子体形成。
+3. **等离子体电路检查**：用 `L0 = μ0 R0(ln(8R0/a)-2)` 和极简 `Rp` 估算 `V_plasma = L0 dIp/dt + Rp Ip`。
+4. **CS 击穿 swing**：用 `V_loop = -sum(M_CS_i dI_CS_i/dt)` 反推 CS 需要的电流变化率，并分配到 `CS1/CS2/CS3`。
+5. **PF 零场预置**：用 PF 场影响系数矩阵计算击穿点 `B_R/B_Z`，优先调整 `PF3/PF4` 使其趋于低值。
+6. **PF 局部修正**：用 `PF1/PF2` 做小幅修正，避免初始磁场结构过差。
+7. **检查约束**：检查 CS 电流、变化率、已用伏秒、PF 零场质量、环电压跟踪和波形连续性。
 
 简化数据流为：
 
 ```text
-Ip_seed + breakdown_loop_voltage
-  → CS dI/dt
-  → CS1/CS2/CS3 击穿波形
+Ip_seed + L0 + Rp
+  → V_loop_required(t)
+  → CS mutual-inductance swing
 
-击穿区低 B_R/B_Z
-  → PF3/PF4 预置
-  → PF1/PF2 小修正
-  → PF 零场检查
+PF 击穿点场系数矩阵
+  → Br/Bz at breakdown point
+  → PF3/PF4 null-field preset
+  → zero-field validation
 ```
 
 ### 3.4 输出
@@ -102,7 +108,7 @@ Ip_seed + breakdown_loop_voltage
 | `Ip_seed_result` | 击穿结束时的估计种子电流 |
 | `coil_state_at_breakdown_end` | 所有线圈组在击穿末端的电流 |
 | `cs_flux_used_breakdown` | 击穿阶段已消耗伏秒 |
-| `breakdown_validation` | loop voltage、零场、限幅、变化率、平滑性检查 |
+| `breakdown_validation` | 环电压、零场、限幅、变化率、平滑性检查 |
 
 如果检查不通过，优先修正顺序为：提高或重新分配 CS swing、延长击穿时间、调整 PF3/PF4 预置、减小不必要的 PF1/PF2 修正。
 
@@ -114,10 +120,10 @@ Ip_seed + breakdown_loop_voltage
 
 Ramp-up 阶段解决的问题是：从 `Ip_seed` 平滑爬升到 `Ip_flat`，同时让等离子体从初始简单截面逐步过渡到目标平顶位形。
 
-这一阶段采用两条弱耦合主线：
+当前建议采用两条弱耦合主线：
 
-1. CS 电流驱动线：负责 `Ip` 上升和伏秒管理；
-2. PF 位形控制线：负责主半径、边界、拉长比、三角形变和 X 点趋势。
+1. **CS 电流驱动线**：负责 `Ip` 上升和伏秒管理；
+2. **PF 位形控制线**：负责主半径、边界、拉长比、三角形变和 X 点趋势。
 
 ### 4.2 输入
 
@@ -135,30 +141,34 @@ Ramp-up 的输入不是从零开始，而是接收 Breakdown 的末态：
 
 Ramp-up 可按下面顺序执行：
 
-1. **生成 Ip 目标轨迹**：从 `Ip_seed` 平滑上升到 `Ip_flat`，避免阶跃。
-2. **估算 loop voltage 需求**：根据 `Ip(t)` 的斜率估算所需感应电压。
-3. **生成 CS 波形**：把 loop voltage 需求分配到 `CS1/CS2/CS3`，并更新伏秒消耗。
-4. **生成位形目标轨迹**：令 `R/a/κ/δ/X-point` 从初始状态逐步接近平顶目标。
-5. **生成 PF 波形**：
-   - `PF4` 主要随 `Ip` 增大调整整体平衡和主半径；
-   - `PF3` 参与径向/垂直平衡、X 点趋势和后段上下修正；
-   - `PF1/PF2` 负责边界、拉长比、三角形变和 X 点形成；
-   - `Div1/Div2` 只在 ramp-up 后段缓慢接近平顶设定。
-6. **检查约束**：检查 CS 伏秒、电流限幅、变化率、PF 平滑性、位形演化趋势和 VS 裕度。
+1. **生成 `Ip(t)` 轨迹**：从 `Ip_seed` 平滑上升到 `Ip_flat`。
+2. **生成 `shape(t)` 轨迹**：令 `R/a/κ/δ/Z/X-point` 从击穿末态逐步接近平顶前目标。
+3. **计算 `L_p(t)` 与 `R_p(t)`**：使用最小物理口径估计等离子体电感和电阻。
+4. **计算环电压需求**：用 `V_loop_req = d(L_p Ip)/dt + R_p Ip` 得到升流所需环电压。
+5. **生成 CS 波形**：把 `V_loop_req` 通过互感方程分配到 `CS1/CS2/CS3`，并更新伏秒消耗。
+6. **构造 PF 目标量**：把主半径平衡、拉长、三角形变、竖直位置和 X 点趋势转成 PF 控制目标。
+7. **生成 PF 波形**：
+   - `PF4` 主要承担整体垂直场和主半径平衡；
+   - `PF3` 参与径向/垂直平衡和 X 点趋势；
+   - `PF1/PF2` 负责拉长比、三角形变和边界成形；
+   - `Div1/Div2` 只在后段缓慢接近平顶设定。
+8. **检查约束**：检查 CS 伏秒、电流限幅、变化率、PF 残差、位形演化趋势和 VS 裕度。
 
 简化数据流为：
 
 ```text
 Ip_seed → Ip_flat
-  → Ip(t)
-  → loop voltage(t)
+  → Ip(t), dIp/dt
+  → Lp(t), Rp(t)
+  → V_loop_required(t)
   → CS1/CS2/CS3(t)
-  → CS 伏秒检查
+  → CS flux tracking
 
-初始截面 → 目标 R/a/κ/δ/X-point
+初始截面 → 目标 R/a/κ/δ/Z/X-point
   → shape(t)
+  → Bv / shape control targets
+  → PF response matrix
   → PF1/PF2/PF3/PF4(t)
-  → 位形趋势与限幅检查
 ```
 
 ### 4.4 输出
@@ -203,24 +213,28 @@ Flat-top 接收 Ramp-up 的末态：
 
 Flat-top 可按下面顺序执行：
 
-1. **保持 Ip 平顶**：令 `Ip(t)` 维持在 `Ip_flat` 附近。
-2. **生成 CS 慢变波形**：CS 只提供维持电流所需的慢速变化，并持续更新剩余伏秒。
-3. **保持 PF 工作点**：`PF1-4` 接近 ramp-up 末态，只允许小幅慢调以维持边界、主半径和 X 点。
-4. **设置 Div 微调**：`Div1/Div2` 给出固定工作点或小幅扫描，用于打击点位置修正。
-5. **保留 VS 裕度**：`VS` 不生成快速反馈波形，只报告可用电流范围和保留比例。
-6. **检查平顶可维持性**：检查剩余伏秒、PF 平滑性、X 点/偏滤器构型、Div 范围和 VS 裕度。
+1. **保持 `Ip(t)` 平台**：必要时允许一小段收敛，然后进入平台保持。
+2. **计算平台所需环电压**：用 `V_loop_req = d(L_p Ip)/dt + R_p Ip` 估算低环电压维持需求。
+3. **生成 CS 慢变波形**：CS 通过互感关系提供低环电压，并持续更新剩余伏秒。
+4. **保持 PF 工作点**：`PF1-4` 通过响应矩阵在平顶工作点附近做小幅慢调，维持边界、主半径和 X 点。
+5. **设置 Div 微调**：`Div1/Div2` 给出固定工作点或小幅扫描，用于打击点位置修正。
+6. **保留 VS 裕度**：`VS` 不生成快速反馈波形，只报告可用电流范围和保留比例。
+7. **检查平顶可维持性**：检查剩余伏秒、PF 平滑性、X 点/偏滤器构型、Div 范围和 VS 裕度。
 
 简化数据流为：
 
 ```text
-Ip_flat + flattop_duration
-  → CS 慢变需求
-  → 剩余伏秒检查
+Ip_flat hold
+  → Lp(t), Rp(t)
+  → V_loop_required(t)
+  → CS maintenance
+  → remaining flux check
 
-目标边界 + X-point + Div strike point
-  → PF1-4 平顶工作点
-  → Div1/Div2 微调
-  → 平顶位形与裕度检查
+目标边界 + X-point + strike-point target
+  → PF hold targets
+  → PF response matrix hold
+  → Div equivalent response
+  → shape / strike-point / stability checks
 ```
 
 ### 5.4 输出
@@ -261,8 +275,8 @@ Ip_flat + flattop_duration
 | CS 伏秒 | 击穿、爬升、平顶后仍有最低裕度 |
 | 波形连续性 | 阶段交接处无非物理阶跃 |
 | Breakdown 零场 | 击穿区 `B_R/B_Z` 处于可接受低值趋势 |
-| Ramp-up 位形 | `R/a/κ/δ/X-point` 平滑接近目标 |
-| Flat-top 维持 | `Ip`、PF 工作点和 Div 设定保持稳定 |
+| Ramp-up 物理链路 | `Ip/Lp/Rp/V_loop/CS/PF` 逻辑自洽 |
+| Flat-top 维持 | `Ip`、PF 工作点、Div 设定和剩余伏秒保持可行 |
 | VS 裕度 | VS 保留足够实时反馈范围 |
 
 ---
@@ -272,11 +286,11 @@ Ip_flat + flattop_duration
 以 `04_io_and_examples.md` 中的示例为例，传导过程如下：
 
 1. `t = 0.00 s`：TF 已等效提供 `B0 = 12.2 T`；CS 处于预充磁状态；PF3/PF4 给出击穿零场预置；Div 和 VS 为 0 或待命。
-2. `t = 0.08 s`：CS swing 产生 loop voltage，`Ip` 达到约 `0.15 MA`；PF 零场配置完成；该时刻的 CS/PF 电流作为 Ramp-up 初值。
-3. `t = 0.08-1.20 s`：`Ip` 从 `0.15 MA` 平滑升到 `8.7 MA`；CS 持续消耗伏秒；PF4/PF3 随 `Ip` 调整整体平衡；PF1/PF2 逐步建立拉长、三角形变和 X 点趋势；Div 后段缓慢进入工作点。
+2. `t = 0.08 s`：CS swing 产生环电压，`Ip` 达到约 `0.15 MA`；PF 零场配置完成；该时刻的 CS/PF 电流和剩余伏秒作为 Ramp-up 初值。
+3. `t = 0.08-1.20 s`：`Ip` 从 `0.15 MA` 平滑升到 `8.7 MA`；CS 持续消耗伏秒；PF4/PF3 提供整体平衡；PF1/PF2 建立拉长、三角形变和 X 点趋势；Div 后段缓慢进入工作点。
 4. `t = 1.20 s`：进入平顶，`Ip = 8.7 MA`，PF1-4 达到目标位形附近工作点，CS 仍保留伏秒裕度。
 5. `t = 1.20-3.20 s`：CS 慢变维持电流；PF1-4 小幅慢调或近似保持；Div 微调打击点；VS 保留快速反馈裕度。
-6. `t = 3.20 s`：输出完整波形表和检查报告。如果伏秒不足或变化率超限，则回到配置中调整时间、目标斜率或线圈分配。
+6. `t = 3.20 s`：输出完整波形表和检查报告。如果伏秒不足、变化率超限或平台维持不成立，则回到配置中调整时间、目标斜率、伏秒预算或位形目标。
 
 ---
 

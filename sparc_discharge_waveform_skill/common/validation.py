@@ -29,6 +29,7 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     checks["target"] = _check_target(config, issues)
     checks["coils"] = _check_coils(config, issues, warnings)
     checks["constraints"] = _check_constraints(config, issues)
+    checks["physics"] = _check_physics(config, warnings)
 
     return {
         "passed": not issues,
@@ -148,3 +149,26 @@ def _check_constraints(config: dict[str, Any], issues: list[str]) -> bool:
             ok = False
 
     return ok
+
+
+def _check_physics(config: dict[str, Any], warnings: list[str]) -> bool:
+    physics = config.get("physics", {})
+    if not physics:
+        warnings.append("physics 缺失，将使用第一阶段内置最小物理约束默认值。")
+        return True
+
+    for name, value in physics.get("cs_mutual_inductance_H", {}).items():
+        try:
+            if float(value) <= 0:
+                warnings.append(f"physics.cs_mutual_inductance_H.{name} 应大于 0。")
+        except (TypeError, ValueError):
+            warnings.append(f"physics.cs_mutual_inductance_H.{name} 不是有效数值。")
+
+    if "plasma_resistance_ohm" in physics:
+        try:
+            if float(physics["plasma_resistance_ohm"]) < 0:
+                warnings.append("physics.plasma_resistance_ohm 应大于等于 0。")
+        except (TypeError, ValueError):
+            warnings.append("physics.plasma_resistance_ohm 不是有效数值。")
+
+    return True
